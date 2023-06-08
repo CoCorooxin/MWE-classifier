@@ -45,21 +45,24 @@ class Vocabulary:
 
         return len(self.idx2word)
 
-
 """
 Functions for reading and writing UD CONLL data
 """
 CONLL_FIELDS = ["token", "pos", "features", "deprel"]
-MWE_TAGS = ["outside", "mwehead", "component"]
+MWE_TAGS = ["B", "I"]  # B for begin , I for inside
 
 
-def readfile(filename, update=False, tok_vocab=None, pos_vocab=None, mwe_vocab=None, deprel_vocab=None):
+def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>"]),
+             tags_vocab=Vocabulary(["B_X"])):
     """
     function to read and encode the corpus at one pass
+    signature for train corpus : X_toks, Y_tags = readfile("corpus/train.conllu", update=True)
+    signature for test corpus/ dev corpus:  X_test, Y_test = readfile("corpus/train.conllu", update=True, vocabtoks_train, vocabtags_train)
     """
 
     istream = open(filename, encoding="utf-8")
-    x_toks, pos_tags, deprels, y_mwe = [], [], [], []
+    X_toks, Y_tags = [], []
+    sent_toks, sent_tags = [], []
 
     for line in istream:
         line = line.strip()
@@ -70,99 +73,78 @@ def readfile(filename, update=False, tok_vocab=None, pos_vocab=None, mwe_vocab=N
             except ValueError:
                 pass
             if tokidx == "1":
-                # beginning of sentence
-                x_toks.append(tok_vocab["<bos>"])
-                y_mwe.append(mwe_vocab["outside"])
-                deprels.append(deprel_vocab["<unk>"])
-                pos_tags.append(pos_vocab["<unk>"])
+                # beginning of sentence, add false toks
+                sent_toks.append(toks_vocab["<bos>"])
+                sent_tags.append(tags_vocab["B_X"])
 
-            # extract info
-            x_toks.append(tok_vocab.lookup(tok=token, update=update))
-            pos_tags.append(pos_vocab.lookup(pos, update=update))
-            deprels.append(deprel_vocab.lookup(deprel, update=update))
-            # make simple mwe tags
-            if features.startswith("mwehead"):
-                y_mwe.append(mwe_vocab["mwehead"])
-            elif features.startswith("component"):
-                y_mwe.append(mwe_vocab["component"])
-            else:
-                y_mwe.append(mwe_vocab["outside"])
+            # extract simple mwe tags
+            mwe_tag = lambda x: "I" if features.startswith("component") else "B"
+            # extract tagging information
+            sent_toks.append(toks_vocab.lookup(tok=token, update=update))
+            sent_tags.append(tags_vocab.lookup(tok=mwe_tag(features) + "_" + upos, update=update))
 
-        elif len(line) == 0 and x_toks:
-            # end of sentence
-            x_toks.append(tok_vocab["<eos>"])
-            y_mwe.append(mwe_vocab["outside"])
-            deprels.append(deprel_vocab["<unk>"])
-            pos_tags.append(pos_vocab["<unk>"])
-
-    # end of corpus
-    x_toks.append(tok_vocab["<eos>"])
-    y_mwe.append(mwe_vocab["outside"])
-    deprels.append(deprel_vocab["<unk>"])
-    pos_tags.append(pos_vocab["<unk>"])
+        elif sent_toks:
+            # end of sentence, add  false tokens
+            sent_toks.append(toks_vocab["<eos>"])
+            sent_tags.append(tags_vocab["B_X"])
+            X_toks.append(sent_toks)
+            Y_tags.append(sent_tags)
+            sent_toks, sent_tags = [], []
 
     istream.close()
+    # return the encoded data in list of list, the nested list represents the sentences
+    return X_toks, Y_tags, toks_vocab, tags_vocab
 
-    return x_toks, pos_tags, y_mwe, deprels
+
 # [{"token1": "token", "multiword": "mwe", "mwe lemma": "mwe lemma"}, {"token2": "token", "multiword": "mwe"}, {"token3": "token", "multiword": "mwe"}]
 
 
 class MWEDataset(Dataset):
 
-    def __init__(self, datafilename=None, lst_toks=None, tok_vocab=None, pos_vocab=None, mwe_vocab=None,
-                 deprel_vocab=None, isTrain=False, context_size=1):
+    def __init__(self, datafilename=None, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>"]),
+                 tags_vocab=Vocabulary(["B_X"]), isTrain=False, window_size=0):
         """
         take as input either the path to a conllu file or a list of tokens
         we consider context size as the n preceding and n subsequent words in the text as the context for predicting the next word.
         """
         super(MWEDataset, self).__init__()
 
-        self.tok_vocab, self.pos_vocab, self.mwe_vocab, self.deprel_vocab = tok_vocab, pos_vocab, mwe_vocab, deprel_vocab
+        self.toks_vocab, self.tags_vocab = toks_vocab, tags_vocab
 
-        if datafilename:
-            self.x_toks, self.pos_tags, self.y_mwe, self.deprels = readfile("corpus/train.conllu",
-                                                                             update=isTrain,
-                                                                             tok_vocab=self.tok_vocab,
-                                                                             pos_vocab=self.pos_vocab,
-                                                                             mwe_vocab=self.mwe_vocab,
-                                                                             deprel_vocab=self.deprel_vocab)
-        elif lst_toks:
-            self.x_toks = lst_toks
-            self.tok_vocab = Vocabulary(lst_toks)
-            self.pos_tags = [0] * len(self.x_toks)
-            self.deprels = [0] * len(self.x_toks)
-            self.pos_vocab = Vocabulary(["<unk>"])
-            self.deprel_vocab = Vocabulary(["<unk>"])
+        self.Xtoks_IDs, self.Ytags_IDs, self.toks_vocab, self.tags_vocab = readfile("corpus/train.conllu",
+                                                                                    update=isTrain,
+                                                                                    toks_vocab=toks_vocab,
+                                                                                    tags_vocab=tags_vocab)
 
-        print('token Vocab size', len(self.tok_vocab))
-        self.context_size = context_size
-        self.context = [0] * self.context_size + self.x_toks + [0] * self.context_size
-        self.ctxt_deprels = [0] * self.context_size + self.deprels + [0] * self.context_size
-        self.ctxt_pos = [0] * self.context_size + self.pos_tags + [0] * self.context_size
+        print('token Vocab size', len(self.toks_vocab))
+        self.window_size = window_size
+        self.data = self.build_dataset(self.Xtoks_IDs, self.Ytags_IDs)
 
     def __len__(self):
-        return len(self.x_toks)
+        return len(self.data)
+
+    def build_dataset(self, X_toks, Y_tags):
+        """
+        build examples with contextual tokens as features
+        takes as input a nested list of encoded corpus, [sentences[tokens]]
+        return a list of examples with context window features
+        """
+        examples = []
+        for toks, tags in zip(X_toks, Y_tags):
+
+            toks = [self.toks_vocab["<bos>"]] * self.window_size + toks + [
+                self.toks_vocab["<eos>"]] * self.window_size  # 3+3+3
+
+            for i in range(self.window_size, len(toks) - self.window_size, 1):  # 3, 6, 1
+
+                examples.append((torch.tensor(toks[i - self.window_size: i + self.window_size + 1]),
+                                 torch.tensor(tags[i - self.window_size])))
+                # print(examples[-1])
+        return examples
 
     def __getitem__(self, idx):
-        """
-        return the X as the concatenation of token, and the tokens in the immediate context window
-        Y is a real number representing the idx for mwe tags
-        """
 
-        X = torch.tensor(self.context[idx: idx + self.context_size] +
-                         [self.x_toks[idx]] +
-                         self.context[idx + self.context_size + 1: idx + 2 * self.context_size + 1])
-
-        X_deprel = torch.tensor(self.ctxt_deprels[idx: idx + self.context_size] +
-                                [self.deprels[idx]] +
-                                self.ctxt_deprels[idx + self.context_size + 1: idx + 2 * self.context_size + 1])
-
-        X_pos = torch.tensor(self.ctxt_pos[idx: idx + self.context_size] +
-                             [self.pos_tags[idx]] +
-                             self.ctxt_pos[idx + self.context_size + 1: idx + 2 * self.context_size + 1])
-        Y_true = self.y_mwe[idx]
-
-        return X, X_deprel, X_pos, Y_true
+        return self.data[idx]
 
     def as_strings(self, batch_tensor):
         """
