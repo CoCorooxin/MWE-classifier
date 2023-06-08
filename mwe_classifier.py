@@ -4,7 +4,6 @@ from collections import Counter
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
-from gensim.models import Word2Vec
 
 
 class MweClassifer(nn.Module):
@@ -54,7 +53,8 @@ class MweClassifer(nn.Module):
     def _init_weights(self):
         pass
 
-    def train_model(self, trainset, epochs=10, lr=1e-3, batch_size=10, device="cpu", reg=None):
+    def train_model(self, train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", reg=None,
+                    split_train=0.8):
         """
         the train data is in form of nested lists: [sentences[tokens]]
         """
@@ -63,39 +63,52 @@ class MweClassifer(nn.Module):
         # optimizer   = torch.optim.Adam()
         optimizer = torch.optim.SGD(self.parameters(), lr=lr, momentum=0.9)
         loss_fnc = nn.NLLLoss()
-        trainloader = trainset.get_loader(batch_size=batch_size, shuffle=True)
+        test_loader = test_data.get_loader(batch_size=batch_size)
 
         train_loss = []
 
         for e in range(epochs):
             self.train()
+            # at every epochs we split the traindata into train set and dev set
+            num_train_examples = int(split_train * len(train_data))
+            trainset, validset = random_split(train_data, [num_train_examples, len(train_data) - num_train_examples])
+            train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
+            dev_loader = DataLoader(validset, batch_size=batch_size, shuffle=False)
 
             ep_loss = []
 
-            for X_toks, Y_gold in tqdm(trainloader):
+            for X_toks, Y_gold in tqdm(train_loader):
                 # print(x.shape)
                 optimizer.zero_grad()
-                y_hat = self.forward(X_toks)
+                logprobs = self.forward(X_toks)
 
                 # print(y_hat.shape)
-                loss_value = loss_fnc(y_hat, Y_gold)
+                loss_value = loss_fnc(logprobs, Y_gold)
                 ep_loss.append(loss_value.item())
                 loss_value.backward()
                 optimizer.step()
             loss = sum(ep_loss) / len(ep_loss)
-            print(loss)
             train_loss.append(loss)
+            valid_loss = self.validate(dev_loader)
 
             # print("Epoch %d | Mean train loss  %.4f | Mean dev loss %.4f"%(e,loss, devloss) )
-            print("Epoch %d | Mean train loss  %.4f" % (e, loss))
+            print("Epoch %d | Mean train loss  %.4f |  Mean dev loss  %.4f " % (e, loss, valid_loss))
             print()
-        print(sum(train_loss) / len(train_loss))
+
+        average_precision, average_recall, average_f1_score = self.evaluation(test_loader)
+        print("Precision %.4f | Recall  %.4f |  F-score  %.4f " % (average_precision, average_recall, average_f1_score))
 
     def validate(self, data_loader, device="cpu"):
         loss_fnc = nn.NLLLoss()
         loss_lst = []
         self.eval()
-        pass
+        with torch.no_grad():
+            for X_toks, Y_gold in tqdm(data_loader):
+                logprobs = self.forward(X_toks)
+
+                loss = loss_fnc(logprobs, Y_gold)
+                loss_lst.append(loss)
+        return sum(loss_lst) / len(loss_lst)
 
     def predict(self, string):
         """
@@ -105,22 +118,40 @@ class MweClassifer(nn.Module):
 
         pass
 
-    def evaluation(self, y_hat, y_gold):
-        TP = 0
-        FN = 0
-        FP = 0
-        for logits, gold in zip(y_hat, y_gold):
-            pred = int(torch.argmax(logits))
-            gold = int(gold)
+    def evaluation(self, test_loader):
+        """
+        evaluation the classifier with confusion matrix : precision recall and f-score
+        """
+        self.eval()
+        num_tags = len(self.tags_vocab)
+        TP = torch.zeros(num_tags)
+        FP = torch.zeros(num_tags)
+        FN = torch.zeros(num_tags)
+        with torch.no_grad():
+            for X_toks, Y_golds in tqdm(test_loader):
+                logprobs = self.forward(X_toks)
+                scores, predicted_IDs = torch.max(logprobs.data, dim=1)
+                # convert tensor to np arrays
+                predicted_IDs = predicted_IDs.cpu().numpy()
+                Y_golds = Y_golds.cpu().numpy()
+                for tag in range(num_tags):
+                    TP[tag] += ((predicted_IDs == tag) & (Y_golds == tag)).sum()
+                    FP[tag] += ((predicted_IDs == tag) & (Y_golds != tag)).sum()
+                    FN[tag] += ((predicted_IDs != tag) & (Y_golds == tag)).sum()
+        # Calculate precision, recall, and F1 score for each tag
+        precision = TP / (TP + FP)
+        recall = TP / (TP + FN)
+        f1_score = 2 * (precision * recall) / (precision + recall)
 
-            if pred * gold != 0:
-                TP += 1
-            elif gold > 0:
-                FN += 1
-            elif pred > 0:
-                FP += 1
-        return TP, FN, FP
+        # Calculate average precision, recall, and F1 score
+        average_precision = torch.mean(precision)
+        average_recall = torch.mean(recall)
+        average_f1_score = torch.mean(f1_score)
 
-        # if torch.argmax(y_hat) != gold and
+        return average_precision, average_recall, average_f1_score
+
+    def load_model(self, modelpath):
+        pass
+
 
 
