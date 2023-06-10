@@ -1,36 +1,53 @@
-from mwe_dataset import MWEDataset
+from mwe_dataset import MWEDataset, Vocabulary
 import torch
+import torch.nn.functional as F
 from collections import Counter
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
 
 
-class MweClassifer(nn.Module):
+class Attention(nn.Module):
+    def __init__(self, hidden_size):
+        super(Attention, self).__init__()
+        self.hidden_size = hidden_size
+        self.Wq = nn.Linear(hidden_size, hidden_size)
+        self.Wk = nn.Linear(hidden_size, hidden_size)
+        self.V = nn.Linear(hidden_size, 1)
 
-    def __init__(self, toks_vocab, tags_vocab, window_size=0, emb_size=64, hidden_size=64, pretrainedw2v=None,
-                 drop_out=0.):
+    def forward(self, hidden, logits):
+        hidden = hidden.unsqueeze(1)  # (batch_size, 1, hidden_size)
+        activate = torch.tanh(self.W1(logits) + self.W2(hidden))  # (batch_size, seq_length, hidden_size)
+        attention_weights = F.softmax(self.V(activate), dim=1)  # (batch_size, seq_length, 1)
+        new_logits = torch.sum(attention_weights * logits, dim=1)  # (batch_size, hidden_size)
+        return new_logits
 
-        super(MweClassifer, self).__init__()
+class MweClassifier(nn.Module):
+
+    def __init__(self, model_name, toks_vocab, tags_vocab, window_size=0, emb_size=64, hidden_size=64, pretrainedw2v=None, drop_out=0.):
+
+        super(MweClassifier, self).__init__()
 
         self.word_embedding = nn.Embedding(len(toks_vocab), emb_size)
-        self.window_size = window_size
+        self.window_size  = window_size
         self.input_length = 1 + window_size * 2
-        self.toks_vocab = toks_vocab
-        self.tags_vocab = tags_vocab
+        self.toks_vocab   = toks_vocab
+        self.tags_vocab   = tags_vocab
 
-        self.net = nn.Sequential(
-            nn.Linear(emb_size * self.input_length, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size * 2),
-            nn.Dropout(drop_out),
-            nn.ReLU(),
-            nn.Linear(hidden_size * 2, len(tags_vocab)),  # output # of classes
-            nn.LogSoftmax(dim=1)
-        )
+        self.FFW          = nn.Linear(hidden_size * 2, len(tags_vocab)),  # output # of classes
+
 
         if pretrainedw2v:
             self.word_embedding.weight.data.copy_(torch.from_numpy(self.pretrainedw2v_loader(pretrainedw2v).wv.vectors))
+
+    def forward(self, Xtoks_IDs):
+        b, seq = Xtoks_IDs.shape
+
+        input = self.word_embedding(Xtoks_IDs)  # Batch, inputsize*emb_size
+        # print(input.shape) #B, window_size, emb_size
+        # input.view(b, -1) B, window_size * emb_size
+        nn.LogSoftmax(dim=1)
+        return self.net(input.view(b, -1))  # tag_size = 3
 
     @staticmethod
     def pretrainedw2v_loader(self, path_to_pretrained=None):
@@ -42,19 +59,10 @@ class MweClassifer(nn.Module):
             model = KeyedVectors.load_word2vec_format(path_to_pretrained, binary=True)
         return model
 
-    def forward(self, Xtoks_IDs):
-        b, seq = Xtoks_IDs.shape
-
-        input = self.word_embedding(Xtoks_IDs)  # Batch, inputsize*emb_size
-        # print(input.shape) #B, window_size, emb_size
-        # input.view(b, -1) B, window_size * emb_size
-        return self.net(input.view(b, -1))  # tag_size = 3
-
     def _init_weights(self):
         pass
 
-    def train_model(self, train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", reg=None,
-                    split_train=0.8):
+    def train_model(self, train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", reg=None, split_train=0.8):
         """
         the train data is in form of nested lists: [sentences[tokens]]
         """
@@ -150,8 +158,40 @@ class MweClassifer(nn.Module):
 
         return average_precision, average_recall, average_f1_score
 
-    def load_model(self, modelpath):
-        pass
+    @staticmethod
+    def load(modelfile,toks_vocab, tags_vocab, window_size, embsize, hidden_size, drop_out, device):
+        toks_vocab = Vocabulary.read(toks_vocab)
+        tags_vocab = Vocabulary.read(tags_vocab)
+        model      = MweClassifier(toks_vocab,tags_vocab, window_size, embsize, hidden_size, drop_out)
+        model.load_params(modelfile,device)
+        return model,toks_vocab, tags_vocab
+
+    def load_params(self,param_filename,device):
+        self.load_state_dict(torch.load(param_filename, map_location=device))
+
+    def save(self, path):
+        self.toks_vocab.write(os.path.join(path, "toks.vocab"))
+        self.tags_vocab.write(os.path.join(path, "tags.vocab"))
+        torch.save(self.state_dict(), path)
 
 
+if __name__ == '__main__':
+    import argparse
+    import os
+    import yaml
+    parser = argparse.ArgumentParser("MWE Classifer")
+    parser.add_argument('config_file')
 
+    args = parser.parse_args()
+    cstream = open(args.config_file)
+    config = yaml.safe_load(cstream)
+    cstream.close()
+    toks_vocab  = Vocabulary.read(config["TOKS_VOCAB"])
+    tags_vocab  = Vocabulary.read(config["TAGS_VOCAB"])
+
+    model, toks_vocab, tags_vocab = MweClassifier.load(config['MODEL_DIR'], toks_vocab,tags_vocab, config['WINDOW_SIZE'], config['EMBSIZE'],config['HIDDENSIZE'], config['DROPOUT'], device=args.device)
+    #train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", reg=None, split_train=0.8):
+
+    model.train_model(config["TRAIN"], config["TEST", config["EPOCHS"], config["'"]])
+
+    model.save("trained_models")

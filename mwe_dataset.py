@@ -1,50 +1,61 @@
 from torch.utils.data import Dataset, DataLoader
 import torch
 
+
+
 class Vocabulary:
-
+    
     def __init__(self, symbols = None):
-
-        # dictionary to map the vocabulary with a id to build matrix
-        # add "UNK" for unknown word to the initial mapping
+        
+        #dictionary to map the vocabulary with a id to build matrix
+        #add "UNK" for unknown word to the initial mapping  
         self.word2idx = dict()
         self.idx2word = []
 
         if symbols:
             for sym in symbols:
                 self.update(sym)
+    @staticmethod
+    def read(self, vocab_file):
+        with open(vocab_file, "r", encoding = "utf-8") as f:
+            toks = f.read().split(" ")
+        return Vocabulary(toks)
+
+    def write(self, filename):
+        with open(filename, "w", encoding = "utf-8") as f:
+            f.write(" ".join(self.idx2word))
 
     def update(self, tok):
-
-        # takes as input a symbol and build the mapping if it doesnt exist
+        
+        #takes as input a symbol and build the mapping if it doesnt exist
         if tok not in self.word2idx:
             self.word2idx[tok] = len(self.idx2word)
             self.idx2word.append(tok)
 
     def lookup(self, tok, update = False):
-
-        # find tok id given the string, if the tok does not exist return the idx of "UNK"
+        
+        #find tok id given the string, if the tok does not exist return the idx of "UNK"
         if tok not in self.word2idx:
             if update:
                 self.update(tok)
                 return self[tok]
             return self.word2idx["<unk>"]
-
+            
         return self.word2idx[tok]
     def rev_lookup(self, idx):
-
-        # find the tok string given the id
+        
+        #find the tok string given the id
         return self.idx2word[idx]
-
+    
     def __getitem__(self, symbol):
-
-        # if the symbol does not exist we see it as unk
+        
+        #if the symbol does not exist we see it as unk
         return self.lookup(symbol)
-
+    
     def __len__(self):
-
+        
         return len(self.idx2word)
-
+    
 """
 Functions for reading and writing UD CONLL data
 """
@@ -102,7 +113,7 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<
 class MWEDataset(Dataset):
 
     def __init__(self, datafilename=None, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>"]),
-                 tags_vocab=Vocabulary(["B_X"]), isTrain=False, window_size=0):
+                 tags_vocab=Vocabulary(["B_X"]), window_size=0, isTrain=False, fixed_length = False):
         """
         take as input either the path to a conllu file or a list of tokens
         we consider context size as the n preceding and n subsequent words in the text as the context for predicting the next word.
@@ -111,21 +122,23 @@ class MWEDataset(Dataset):
 
         self.toks_vocab, self.tags_vocab = toks_vocab, tags_vocab
 
-        self.Xtoks_IDs, self.Ytags_IDs, self.toks_vocab, self.tags_vocab = readfile("corpus/train.conllu",
+        self.Xtoks_IDs, self.Ytags_IDs, self.toks_vocab, self.tags_vocab = readfile(datafilename,
                                                                                     update=isTrain,
                                                                                     toks_vocab=toks_vocab,
                                                                                     tags_vocab=tags_vocab)
 
         print('token Vocab size', len(self.toks_vocab))
         self.window_size = window_size
-        self.data = self.build_dataset(self.Xtoks_IDs, self.Ytags_IDs)
+
+        if fixed_length:
+            self.data = self.build_dataset(self.Xtoks_IDs, self.Ytags_IDs)
 
     def __len__(self):
         return len(self.data)
 
     def build_dataset(self, X_toks, Y_tags):
         """
-        build examples with contextual tokens as features
+        build examples with fixed length contextual tokens as features
         takes as input a nested list of encoded corpus, [sentences[tokens]]
         return a list of examples with context window features
         """
@@ -157,3 +170,5 @@ class MWEDataset(Dataset):
 
     def get_loader(self, batch_size=1, num_workers=0, word_dropout=0., shuffle=False):
         return DataLoader(self, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
+
+
