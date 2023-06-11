@@ -3,7 +3,7 @@ import torch
 from torch.nn.functional import pad
 from collections import Counter
 import itertools
-from mwe_dataset import Vocabulary
+from data_utils import Vocabulary,upos2pos
 
 """
 Functions for reading and writing UD CONLL data
@@ -25,10 +25,11 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>", "<bos>", "
         line = line.strip()
         if line and line[0] != "#":
             try:
-                tokidx, token, lemma, upos, pos, features, headidx, deprel, extended, _ = line.split()
+                tokidx, token, lemma, pos, upos, features, headidx, deprel, extended, _ = line.split()
 
             except ValueError:
                 pass
+
             """
             if tokidx == "1":
                 # beginning of sentence, add false toks
@@ -37,11 +38,10 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>", "<bos>", "
                 deprels.append("<bos>")
             """
 
-            # extract tagging information
-             # extract simple mwe tags
+            # extract simple mwe tags
             extr_mwe = lambda x: "I" if features.startswith("component") else "B"
 
-            mwe = extr_mwe(features)+"_"+upos
+            mwe = extr_mwe(features)+"_"+upos2pos(pos)
             toks.append(token)
             mwes.append(mwe)
             deprels.append(deprel)
@@ -144,3 +144,6 @@ class Mysubset(MweRnnDataset):
         return self.subset[index]
     def __len__(self):
         return len(self.subset)
+
+if __name__ == '__main__':
+    corpus, toks_vocab, tags_vocab, deprel_vocab = readfile("corpus/train.conllu")

@@ -1,15 +1,13 @@
 from mwe_dataset import MWEDataset, Vocabulary, Mysubset
 from torch.utils.data import Dataset, DataLoader, random_split
 import torch
-import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_sequence
 import torch.nn as nn
 from tqdm import tqdm
 import rnn_dataset
 from crf import CRF
 import numpy as np
-from mlp_baseline import MLP_baseline,AttentionMLP
 import os
+
 class MweRNN(nn.Module):
 
     def __init__(self, name, toks_vocab, tags_vocab, deprel_vocab, emb_size=64, hidden_size=64, pretrainedw2v=None, drop_out=0.):
@@ -154,9 +152,9 @@ class MweRNN(nn.Module):
                 for path, gold in zip(best_paths, Y_golds):
                     gold = list(self.tags_vocab.rev_lookup(int(i)) for i in gold if i!= self.padidx)
                     for tag in path:
-                        TP[tag] += (path == tag) & (gold == tag).sum()
-                        FP[tag] += (path == tag) & (gold != tag).sum()
-                        FN[tag] += (path != tag) & (gold == tag).sum()
+                        TP[tag] += ((path == tag) & (gold == tag)).sum()
+                        FP[tag] += ((path == tag) & (gold != tag)).sum()
+                        FN[tag] += ((path != tag) & (gold == tag)).sum()
                         class_counts[tag] += (gold == tag).sum()
 
 
