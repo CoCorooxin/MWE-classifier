@@ -86,16 +86,10 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<
 
             except ValueError:
                 pass
-            if tokidx == "1":
-                # beginning of sentence, add false toks
-                sent_toks.append("<bos>")
-                sent_tags.append("B_X")
-                sent_depl.append("<unk>")
 
-            # extract simple mwe tags
             mwe_tag = lambda x: "I" if features.startswith("component") else "B"
             # extract tagging information
-            #tag = mwe_tag(features) + "_" + upos
+            tag = mwe_tag(features) + "_" + upos
             tag= upos
             sent_toks.append(token)
             sent_tags.append(tag)
@@ -107,10 +101,6 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<
                 deprel_vocab.update(deprel)
 
         elif sent_toks:
-            # end of sentence, add  false tokens
-            sent_toks.append("<eos>")
-            sent_tags.append("B_X")
-            sent_depl.append("<unk>")
 
             X_toks.append(sent_toks)
             Y_tags.append(sent_tags)

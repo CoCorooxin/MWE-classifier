@@ -22,6 +22,7 @@ class MweRNN(nn.Module):
         self.toks_vocab   = toks_vocab
         self.tags_vocab   = tags_vocab
         self.deprel_vocab = deprel_vocab
+        self.padidx       = tags_vocab["<pad>"]
 
 
         self.relu         = nn.ReLU()
@@ -147,21 +148,18 @@ class MweRNN(nn.Module):
         with torch.no_grad():
             for X_toks, deprel, Y_golds in tqdm(test_loader):
                 # Forward pass
-                logprobs, masks = self.forward(X_toks)
-                best_score, best_paths = self.crf(logprobs, masks) #viterbi
-                best_paths = pad_sequence(best_paths, padding_value= self.tags_vocab["<pad>"])
+                logits, masks = self.forward(X_toks)
+                best_score, best_paths = self.crf(logits, masks) #viterbi
                 #print(best_paths.shape)
-                # Mask out the padding positions
-                mask = (X_toks == self.toks_vocab["pad"])
-                Y_golds = Y_golds[~mask]
-                best_paths = (best_paths.T)[~mask]
+                for path, gold in zip(best_paths, Y_golds):
+                    gold = list(self.tags_vocab.rev_lookup(int(i)) for i in gold if i!= self.padidx)
+                    for tag in path:
+                        TP[tag] += (path == tag) & (gold == tag).sum()
+                        FP[tag] += (path == tag) & (gold != tag).sum()
+                        FN[tag] += (path != tag) & (gold == tag).sum()
+                        class_counts[tag] += (gold == tag).sum()
 
-                # Update confusion matrix
-                for tag in range(num_tags):
-                    TP[tag] += ((best_paths == tag) & (Y_golds == tag)).sum()
-                    FP[tag] += ((best_paths == tag) & (Y_golds != tag)).sum()
-                    FN[tag] += ((best_paths != tag) & (Y_golds == tag)).sum()
-                    class_counts[tag] += (Y_golds == tag).sum()
+
         # Calculate precision, recall, and F1 score for each tag
         precision = TP / (TP + FP)
         # avoid nan

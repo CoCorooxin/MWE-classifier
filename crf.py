@@ -20,21 +20,20 @@ class CRF(nn.Module):
     The CRF module contain a inner Linear Layer which transform the input from features space to tag space.
 
     :param in_features: number of features for the input
-    :param tags_vocab: vocab tags mapping index
+    :param num_tag: number of tags. DO NOT include START, STOP tags, they are included internal.
     """
 
-    def __init__(self, in_features, tags_vocab):
+    def __init__(self, embsize, tags_vocab):
         super(CRF, self).__init__()
 
-        self.num_tags = len(tags_vocab)
-        self.start_idx = tags_vocab["BOS"]
-        self.stop_idx = tags_vocab["EOS"]
+        self.num_tags = len(tags_vocab) + 2
+        self.start_idx = self.num_tags - 2
+        self.stop_idx = self.num_tags - 1
 
-        self.fc = nn.Linear(in_features, self.num_tags) #embdim->tags dim
+        self.fc = nn.Linear(embsize, self.num_tags)
 
         # transition factor, Tij mean transition from j to i
         self.transitions = nn.Parameter(torch.randn(self.num_tags, self.num_tags), requires_grad=True)
-        #eliminate the possibility of transition from and to the start and the stop index
         self.transitions.data[self.start_idx, :] = IMPOSSIBLE
         self.transitions.data[:, self.stop_idx] = IMPOSSIBLE
 
@@ -52,7 +51,7 @@ class CRF(nn.Module):
 
     def loss(self, features, ys, masks):
         """negative log likelihood loss
-        Bs: batch size, seq: sequence length, embsize: dimension
+        B: batch size, L: sequence length, D: dimension
 
         :param features: [B, L, D]
         :param ys: tags, [B, L]
@@ -137,7 +136,7 @@ class CRF(nn.Module):
                 best_tag_b = bps_t[best_tag_b]
                 best_path.append(best_tag_b)
             # drop the last tag and reverse the left
-            best_paths.append(torch.tensor(best_path[-1::-1]))
+            best_paths.append(torch.tensor(best_path[-2::-1]))
 
         return best_score, best_paths
 

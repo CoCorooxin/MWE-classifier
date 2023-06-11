@@ -10,7 +10,7 @@ Functions for reading and writing UD CONLL data
 """
 CONLL_FIELDS = ["token", "pos", "features", "deprel"]
 MWE_TAGS = ["B", "I"]  # B for begin , I for inside
-base_vocab = Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"])
+
 def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]), tags_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]), deprel_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"])):
     """
     function to read the corpus at one pass
@@ -29,11 +29,13 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>", "<bos>", "
 
             except ValueError:
                 pass
+            """
             if tokidx == "1":
                 # beginning of sentence, add false toks
                 toks.append("<bos>")
                 mwes.append("<bos>")
                 deprels.append("<bos>")
+            """
 
             # extract tagging information
              # extract simple mwe tags
@@ -51,7 +53,8 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>", "<bos>", "
 
         elif toks:
             # end of sentence, add  false tokens
-            corpus.append({"tok": toks+ ["<eos>"], "mwe":mwes+["<eos>"], "deprel": deprels+ ["<eos>"] })
+            #corpus.append({"tok": toks+ ["<eos>"], "mwe":mwes+["<eos>"], "deprel": deprels+ ["<eos>"] })
+            corpus.append({"tok": toks , "mwe": mwes , "deprel": deprels })
             toks, mwes, deprels = [], [], []
 
     istream.close()
@@ -61,15 +64,15 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>", "<bos>", "
 
 # [{"token1": "token", "multiword": "mwe", "mwe lemma": "mwe lemma"}, {"token2": "token", "multiword": "mwe"}, {"token3": "token", "multiword": "mwe"}]
 
-class MWEDataset(Dataset):
+class MweRnnDataset(Dataset):
 
-    def __init__(self, datafilename=None, toks_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]),
-                 tags_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]),  deprel_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]), isTrain=False):
+    def __init__(self, datafilename=None, toks_vocab=Vocabulary([ "<unk>", "<pad>"]),
+                 tags_vocab=Vocabulary([ "<unk>","<pad>"]),  deprel_vocab=Vocabulary([ "<unk>", "<pad>"]), isTrain=False):
         """
         take as input either the path to a conllu file or a list of tokens
         we consider context size as the n preceding and n subsequent words in the text as the context for predicting the next word.
         """
-        super(MWEDataset, self).__init__()
+        super(MweRnnDataset, self).__init__()
 
         self.toks_vocab, self.tags_vocab,self.deprel_vocab  = toks_vocab, tags_vocab, deprel_vocab
         if datafilename:
@@ -126,7 +129,8 @@ class MWEDataset(Dataset):
         # specify that the mk_batch function should be used to collate the individual samples into batches.
         return DataLoader(self, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle, collate_fn=mk_batch)
 
-class Mysubset(MWEDataset):
+class Mysubset(MweRnnDataset):
+
     """
     an auxiliary class to take care of the K fold validation, split the train corpus into train and dev
     """
