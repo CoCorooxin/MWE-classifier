@@ -2,35 +2,34 @@ from mwe_dataset import MWEDataset, Vocabulary, Mysubset
 from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
 import torch.nn as nn
 from tqdm import tqdm
 import rnn_dataset
-from torchcrf import CRF
+from crf import CRF
 import numpy as np
 from mlp_baseline import MLP_baseline,AttentionMLP
 import os
 class MweRNN(nn.Module):
 
-    def __init__(self, name, toks_vocab, tags_vocab, deprel_vocab, window_size=0, emb_size=64, hidden_size=64, pretrainedw2v=None, drop_out=0.):
+    def __init__(self, name, toks_vocab, tags_vocab, deprel_vocab, emb_size=64, hidden_size=64, pretrainedw2v=None, drop_out=0.):
 
         super(MweRNN, self).__init__()
 
         self.word_embedding = nn.Embedding(len(toks_vocab), emb_size)
         #self.depl_embedding = nn.Embedding(len(deprel_vocab), emb_size)
-        self.window_size  = window_size
-        self.input_length = 1 + window_size * 2
+
         self.toks_vocab   = toks_vocab
         self.tags_vocab   = tags_vocab
         self.deprel_vocab = deprel_vocab
 
-        self.FFW          = nn.Linear(hidden_size , len(tags_vocab))  # output # of classes
-        self.logsoftmax   = nn.LogSoftmax(dim=1)
+
         self.relu         = nn.ReLU()
         self.dropout = nn.Dropout(drop_out)
         #self.attention = AttentionMLP(hidden_size, drop_out= drop_out)  # Add attention layer
-        self.crf = CRF(len(tags_vocab))
-
-        self.rnn = nn.RNN(emb_size,hidden_size, batch_first = True, num_layers=1)
+        self.crf = CRF(emb_size, self.tags_vocab)
+        #it's bi directional
+        self.rnn = nn.RNN(emb_size,hidden_size//2, batch_first = True, num_layers=1,bidirectional=True)
 
         if pretrainedw2v:
             self.word_embedding.weight.data.copy_(torch.from_numpy(self.pretrainedw2v_loader(pretrainedw2v).wv.vectors))
@@ -43,9 +42,9 @@ class MweRNN(nn.Module):
 
         logits, hid = self.rnn(emb)
         #attn_output = self.attention(logits)
-        output = self.logsoftmax(self.FFW(self.dropout(logits)))  #bs, seq*embsize
+        masks = (Xtoks_IDs == self.toks_vocab["<pad>"])
         #print(output.shape)
-        return  output # bs, seq, embsize
+        return logits, (~masks) # bs, seq, embsize
 
     @staticmethod
     def pretrainedw2v_loader(self, path_to_pretrained=None):
@@ -85,15 +84,15 @@ class MweRNN(nn.Module):
             for X_toks, depl, Y_gold in tqdm(train_loader):
                 bs, seq = X_toks.shape
                 optimizer.zero_grad()
-                #print(X_toks.shape)
-                logprobs = self.forward(X_toks)
-                #print(logprobs.shape)
-                mask = (Y_gold == train_data.tag_padidx)
-                loss = -self.crf(logprobs, Y_gold, (~mask)) #conditional random field
+
+                logits, masks = self.forward(X_toks)
+                #print(logits.shape)
+                loss =  self.crf.loss(logits, Y_gold, masks) #conditional random field
                 #loss_value = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
                 ep_loss.append(loss.mean().item())
                 loss.backward(loss)
                 optimizer.step()
+
             loss = sum(ep_loss) / len(ep_loss)
             train_loss.append(loss)
             valid_loss = self.validate(dev_loader)
@@ -102,7 +101,7 @@ class MweRNN(nn.Module):
             print("Epoch %d | Mean train loss  %.4f |  Mean dev loss  %.4f " % (e, loss, valid_loss))
             print()
 
-        average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision = self.evaluate(test_loader)
+        TP, FP, FN, average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision = self.evaluate(test_loader)
         print("AVR: Precision %.4f | Recall  %.4f |  F-score  %.4f " % (average_precision, average_recall, average_f1_score))
         print("Weighted: Precision %.4f | Recall  %.4f |  F-score  %.4f " % (weighted_f1_score, weighted_recall, weighted_precision))
 
@@ -113,10 +112,10 @@ class MweRNN(nn.Module):
         with torch.no_grad():
             for X_toks, deprel, Y_gold in tqdm(data_loader):
                 bs, seq = X_toks.shape
-                logprobs = self.forward(X_toks)
-
+                logits, masks = self.forward(X_toks)
                 #loss = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
-                loss = -self.crf(logprobs.view(bs * seq, -1), Y_gold.view(-1))
+                loss = self.crf.loss(logits , Y_gold , masks)
+
                 loss_lst.append(loss)
         return sum(loss_lst) / len(loss_lst)
 
@@ -127,9 +126,10 @@ class MweRNN(nn.Module):
         self.eval()
         with torch.no_grad():
             for X_toks, deprel, Y_gold in tqdm(testset.get_loader(batch_size = 100)):
-                logprobs = self.forward(X_toks,deprel)
+                logits, masks = self.forward(X_toks,deprel)
                 # Decode the best tag sequence using Viterbi decoding
-                best_path = self.crf.decode(logprobs)
+
+                best_scores, best_paths = self.crf(logits, masks)
 
 
 
@@ -147,19 +147,20 @@ class MweRNN(nn.Module):
         with torch.no_grad():
             for X_toks, deprel, Y_golds in tqdm(test_loader):
                 # Forward pass
-                logprobs = self.forward(X_toks)
-                best_path = self.crf.decode(logprobs) #viterbi
-
+                logprobs, masks = self.forward(X_toks)
+                best_score, best_paths = self.crf(logprobs, masks) #viterbi
+                best_paths = pad_sequence(best_paths, padding_value= self.tags_vocab["<pad>"])
+                #print(best_paths.shape)
                 # Mask out the padding positions
-                mask = (X_toks != self.toks_vocab["pad"])
-                best_path = best_path[mask]
-                Y_golds = Y_golds[mask]
+                mask = (X_toks == self.toks_vocab["pad"])
+                Y_golds = Y_golds[~mask]
+                best_paths = (best_paths.T)[~mask]
 
                 # Update confusion matrix
                 for tag in range(num_tags):
-                    TP[tag] += ((best_path == tag) & (Y_golds == tag)).sum()
-                    FP[tag] += ((best_path == tag) & (Y_golds != tag)).sum()
-                    FN[tag] += ((best_path != tag) & (Y_golds == tag)).sum()
+                    TP[tag] += ((best_paths == tag) & (Y_golds == tag)).sum()
+                    FP[tag] += ((best_paths == tag) & (Y_golds != tag)).sum()
+                    FN[tag] += ((best_paths != tag) & (Y_golds == tag)).sum()
                     class_counts[tag] += (Y_golds == tag).sum()
         # Calculate precision, recall, and F1 score for each tag
         precision = TP / (TP + FP)
@@ -188,7 +189,7 @@ class MweRNN(nn.Module):
         weighted_recall = torch.sum(recall * class_weights)
         weighted_precision = torch.sum(precision * class_weights)
 
-        return average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision
+        return TP, FP, FN, average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision
 
     @staticmethod
     def load(modelfile,name, toks_vocab, tags_vocab, window_size, embsize, hidden_size, drop_out, device):

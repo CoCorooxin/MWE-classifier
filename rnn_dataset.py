@@ -10,9 +10,8 @@ Functions for reading and writing UD CONLL data
 """
 CONLL_FIELDS = ["token", "pos", "features", "deprel"]
 MWE_TAGS = ["B", "I"]  # B for begin , I for inside
-
-def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>", "<pad>"]),
-             tags_vocab=Vocabulary([ "B_X"]), deprel_vocab=Vocabulary(["<unk>"])):
+base_vocab = Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"])
+def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]), tags_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]), deprel_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"])):
     """
     function to read the corpus at one pass
     signature for train corpus : X_toks, Y_tags = readfile("corpus/train.conllu", update=True)
@@ -33,8 +32,8 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<
             if tokidx == "1":
                 # beginning of sentence, add false toks
                 toks.append("<bos>")
-                mwes.append("B_X")
-                deprels.append("<unk>")
+                mwes.append("<bos>")
+                deprels.append("<bos>")
 
             # extract tagging information
              # extract simple mwe tags
@@ -52,7 +51,7 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<
 
         elif toks:
             # end of sentence, add  false tokens
-            corpus.append({"tok": toks+ ["<eos>"], "mwe":mwes+["B_X"], "deprel": deprels+ ["<unk>"] })
+            corpus.append({"tok": toks+ ["<eos>"], "mwe":mwes+["<eos>"], "deprel": deprels+ ["<eos>"] })
             toks, mwes, deprels = [], [], []
 
     istream.close()
@@ -64,8 +63,8 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<
 
 class MWEDataset(Dataset):
 
-    def __init__(self, datafilename=None, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>", "<pad>"]),
-                 tags_vocab=Vocabulary(["B_X", "<unk>"]),  deprel_vocab=Vocabulary(["<unk>"]), isTrain=False):
+    def __init__(self, datafilename=None, toks_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]),
+                 tags_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]),  deprel_vocab=Vocabulary([ "<unk>", "<bos>", "<eos>", "<pad>"]), isTrain=False):
         """
         take as input either the path to a conllu file or a list of tokens
         we consider context size as the n preceding and n subsequent words in the text as the context for predicting the next word.
@@ -86,7 +85,7 @@ class MWEDataset(Dataset):
         return len(self.data)
     @property
     def tag_padidx(self):
-        return self.tags_vocab.lookup("PAD")
+        return self.tags_vocab.lookup("<pad>")
 
     def __getitem__(self, idx):
 
@@ -119,9 +118,9 @@ class MWEDataset(Dataset):
                 y = torch.tensor([self.tags_vocab[tag] for tag in mwe])
                 deprel = torch.tensor([self.tags_vocab[tag] for tag in deprel])
 
-                XtoksIDs.append(pad(x, (0, max_seq_len-len(x)), value = self.toks_vocab["pad"]))
-                YtagsIDs.append(pad(y, (0, max_seq_len-len(y)), value = self.tags_vocab["PAD"]))
-                depl.append(pad(deprel, (0, max_seq_len-len(deprel)), value = self.deprel_vocab ["<unk>"]))
+                XtoksIDs.append(pad(x, (0, max_seq_len-len(x)), value = self.toks_vocab["<pad>"]))
+                YtagsIDs.append(pad(y, (0, max_seq_len-len(y)), value = self.tags_vocab["<pad>"]))
+                depl.append(pad(deprel, (0, max_seq_len-len(deprel)), value = self.deprel_vocab ["<pad>"]))
             return torch.stack(XtoksIDs), torch.stack(depl) , torch.stack(YtagsIDs)
 
         # specify that the mk_batch function should be used to collate the individual samples into batches.
