@@ -1,0 +1,12 @@
+MODEL_FILE : "model.pth"
+TOKS_VOCAB : "toks.vocab"
+TAGS_VOCAB : "tags.vocab"
+NAME       : "MLP"
+TRAIN      : "corpus/train.conllu"
+TEST       : "corpus/test.conllu"
+WINDOW_SIZE: 3
+EMBSIZE    : 64
+HIDDENSIZE : 64
+BATCHSIZE  : 16
+EPOCHS     : 10
+DROPOUT    : 0.3

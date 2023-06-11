@@ -1,16 +1,17 @@
-from mwe_dataset import MWEDataset, Vocabulary, Mysubset
+from data_utils import Vocabulary
+from models import AttentionRNN
 from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 import torch.nn as nn
 from tqdm import tqdm
 import rnn_dataset
 from crf import CRF
-import numpy as np
 import os
+
 
 class MweRNN(nn.Module):
 
-    def __init__(self, name, toks_vocab, tags_vocab, deprel_vocab, emb_size=64, hidden_size=64, pretrainedw2v=None, drop_out=0.):
+    def __init__(self, name, toks_vocab, tags_vocab, emb_size=64, hidden_size=64, drop_out=0.):
 
         super(MweRNN, self).__init__()
 
@@ -19,41 +20,31 @@ class MweRNN(nn.Module):
 
         self.toks_vocab   = toks_vocab
         self.tags_vocab   = tags_vocab
-        self.deprel_vocab = deprel_vocab
         self.padidx       = tags_vocab["<pad>"]
-
 
         self.relu         = nn.ReLU()
         self.dropout = nn.Dropout(drop_out)
-        #self.attention = AttentionMLP(hidden_size, drop_out= drop_out)  # Add attention layer
+
         self.crf = CRF(emb_size, self.tags_vocab)
-        #it's bi directional
-        self.rnn = nn.RNN(emb_size,hidden_size//2, batch_first = True, num_layers=1,bidirectional=True)
 
-        if pretrainedw2v:
-            self.word_embedding.weight.data.copy_(torch.from_numpy(self.pretrainedw2v_loader(pretrainedw2v).wv.vectors))
+        if name == "RNN":
+            self.rnn = nn.RNN(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True)
+        if name == "LSTM":
+            self.rnn = nn.LSTM(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True)
+        if name == "ATRNN":
+            self.rnn = AttentionRNN(emb_size, hidden_size, drop_out = drop_out)
 
-    def forward(self, Xtoks_IDs,deprel=None):
+
+    def forward(self, Xtoks_IDs):
 
         emb = self.word_embedding(Xtoks_IDs)#+ self.depl_embedding(deprel)  # Batch, inputsize*emb_size
         #print(emb.shape) #B, window_size, emb_size
         # input.view(b, -1) B, window_size * emb_size
+        logits, _ = self.rnn(emb)
 
-        logits, hid = self.rnn(emb)
-        #attn_output = self.attention(logits)
         masks = (Xtoks_IDs == self.toks_vocab["<pad>"])
         #print(output.shape)
         return logits, (~masks) # bs, seq, embsize
-
-    @staticmethod
-    def pretrainedw2v_loader(self, path_to_pretrained=None):
-        if not path_to_pretrained:
-            # Download the pretrained French Word2Vec model https://fauconnier.github.io/#data
-            model_name = 'frWac_non_lem_no_postag_no_phrase_500_skip_cut100.bin.gz'
-            model = api.load(model_name)
-        else:
-            model = KeyedVectors.load_word2vec_format(path_to_pretrained, binary=True)
-        return model
 
     def _init_weights(self):
         pass
@@ -68,19 +59,18 @@ class MweRNN(nn.Module):
         #optimizer = torch.optim.SGD(self.parameters(), lr=lr, momentum=0.9)
         loss_fnc = nn.NLLLoss()
         test_loader = test_data.get_loader(batch_size=batch_size)
+        num_train_examples = int(split_train * len(train_data))
+        trainset, validset = random_split(train_data, [num_train_examples, len(train_data) - num_train_examples])
+        train_loader = rnn_dataset.Mysubset(trainset, self.toks_vocab, self.tags_vocab).get_loader(batch_size=batch_size, shuffle=True)
+        dev_loader = rnn_dataset.Mysubset(validset, self.toks_vocab, self.tags_vocab).get_loader(batch_size=batch_size,shuffle=False)
 
         train_loss = []
 
         for e in range(epochs):
             self.train()
-            # at every epochs we split the traindata into train set and dev set
-            num_train_examples = int(split_train * len(train_data))
-            trainset, validset = random_split(train_data, [num_train_examples, len(train_data) - num_train_examples])
-            train_loader = rnn_dataset.Mysubset(trainset, self.toks_vocab, self.tags_vocab, self.deprel_vocab).get_loader(batch_size=batch_size, shuffle=True)
-            dev_loader =  rnn_dataset.Mysubset(validset, self.toks_vocab, self.tags_vocab, self.deprel_vocab).get_loader(batch_size=batch_size, shuffle=False)
             ep_loss = []
 
-            for X_toks, depl, Y_gold in tqdm(train_loader):
+            for X_toks, Y_gold in tqdm(train_loader):
                 bs, seq = X_toks.shape
                 optimizer.zero_grad()
 
@@ -109,7 +99,7 @@ class MweRNN(nn.Module):
         loss_lst = []
         self.eval()
         with torch.no_grad():
-            for X_toks, deprel, Y_gold in tqdm(data_loader):
+            for X_toks, Y_gold in tqdm(data_loader):
                 bs, seq = X_toks.shape
                 logits, masks = self.forward(X_toks)
                 #loss = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
@@ -117,20 +107,6 @@ class MweRNN(nn.Module):
 
                 loss_lst.append(loss)
         return sum(loss_lst) / len(loss_lst)
-
-    def predict(self, testset = None, input_str = None):
-        """
-
-        """
-        self.eval()
-        with torch.no_grad():
-            for X_toks, deprel, Y_gold in tqdm(testset.get_loader(batch_size = 100)):
-                logits, masks = self.forward(X_toks,deprel)
-                # Decode the best tag sequence using Viterbi decoding
-
-                best_scores, best_paths = self.crf(logits, masks)
-
-
 
     def evaluate(self, test_loader):
         """
@@ -144,19 +120,19 @@ class MweRNN(nn.Module):
         FN = torch.zeros(num_tags)
         class_counts = torch.zeros(num_tags)
         with torch.no_grad():
-            for X_toks, deprel, Y_golds in tqdm(test_loader):
+            for X_toks, Y_golds in tqdm(test_loader):
                 # Forward pass
                 logits, masks = self.forward(X_toks)
                 best_score, best_paths = self.crf(logits, masks) #viterbi
                 #print(best_paths.shape)
-                for path, gold in zip(best_paths, Y_golds):
-                    gold = list(self.tags_vocab.rev_lookup(int(i)) for i in gold if i!= self.padidx)
+                for i in range(len(best_paths)):
+                    path = best_paths[i]
+                    gold = torch.tensor([j for j in Y_golds[i] if j != self.padidx])
                     for tag in path:
                         TP[tag] += ((path == tag) & (gold == tag)).sum()
                         FP[tag] += ((path == tag) & (gold != tag)).sum()
                         FN[tag] += ((path != tag) & (gold == tag)).sum()
                         class_counts[tag] += (gold == tag).sum()
-
 
         # Calculate precision, recall, and F1 score for each tag
         precision = TP / (TP + FP)
@@ -188,10 +164,10 @@ class MweRNN(nn.Module):
         return TP, FP, FN, average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision
 
     @staticmethod
-    def load(modelfile,name, toks_vocab, tags_vocab, window_size, embsize, hidden_size, drop_out, device):
+    def load(modelfile,name, toks_vocab, tags_vocab, embsize, hidden_size, drop_out, device):
         toks_vocab = Vocabulary.read(toks_vocab)
         tags_vocab = Vocabulary.read(tags_vocab)
-        model      = MweClassifier(name, toks_vocab,tags_vocab, window_size, embsize, hidden_size, drop_out)
+        model      = MweRNN(name, toks_vocab,tags_vocab, embsize, hidden_size, drop_out, device)
         model.load_params(modelfile,device)
         return model,toks_vocab, tags_vocab
 
@@ -218,9 +194,9 @@ if __name__ == '__main__':
     toks_vocab  = Vocabulary.read(config["TOKS_VOCAB"])
     tags_vocab  = Vocabulary.read(config["TAGS_VOCAB"])
 
-    model, toks_vocab, tags_vocab = MweClassifier.load(config['MODEL_DIR'],config['NAME'], toks_vocab,tags_vocab, config['WINDOW_SIZE'], config['EMBSIZE'],config['HIDDENSIZE'], config['DROPOUT'], device=args.device)
+    model, toks_vocab, tags_vocab = MweRNN.load(config['MODEL_DIR'],config['NAME'], toks_vocab,tags_vocab, config['EMBSIZE'],config['HIDDENSIZE'], config['DROPOUT'], config["DEVICE"])
     #train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", reg=None, split_train=0.8):
 
-    model.train_model(config["TRAIN"], config["TEST", config["EPOCHS"], config["'"]])
+    model.train_model(config["TRAIN"], config["TEST", config["EPOCHS"], config["LR"], config["SPLIT"], config["DEVICE"]])
 
-    model.save("trained_models")
+    model.save("trained_models", "rnn_mod.pth")

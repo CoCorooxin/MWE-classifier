@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 from tqdm import tqdm
 import numpy as np
-from mlp_baseline import MLP_baseline,AttentionMLP
+from models import MLP_baseline,AttentionMLP
 import os
 class MweClassifier(nn.Module):
 

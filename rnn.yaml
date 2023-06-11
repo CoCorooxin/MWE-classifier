@@ -1,0 +1,12 @@
+MODEL_FILE : "atrnn_mod.pth"
+TOKS_VOCAB : "toks.txt"
+TAGS_VOCAB : "tags.txt"
+NAME       : "ATNN"
+TRAIN      : "corpus/train.conllu"
+TEST       : "corpus/test.conllu"
+WINDOW_SIZE: 3
+EMBSIZE    : 64
+HIDDENSIZE : 64
+BATCHSIZE  : 16
+EPOCHS     : 30
+DROPOUT    : 0.1

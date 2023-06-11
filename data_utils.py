@@ -1,4 +1,7 @@
 class Vocabulary:
+    """
+    general encoding class mapping str -> index and vice versa
+    """
 
     def __init__(self, symbols=None):
 
@@ -85,6 +88,6 @@ def upos2pos(ud_pos_tag):
     }
 
     # Map the UD POS tag to the other scheme, or use a default value if not found
-    other_pos_tag = mapping.get(ud_pos_tag, ud_pos_tag)
+    pos_tag = mapping.get(ud_pos_tag, ud_pos_tag)
 
-    return other_pos_tag
+    return pos_tag
