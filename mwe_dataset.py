@@ -1,7 +1,7 @@
 from torch.utils.data import Dataset, DataLoader
 import torch
-
-
+from collections import Counter
+import itertools
 
 class Vocabulary:
     
@@ -16,7 +16,7 @@ class Vocabulary:
             for sym in symbols:
                 self.update(sym)
     @staticmethod
-    def read(self, vocab_file):
+    def read(vocab_file):
         with open(vocab_file, "r", encoding = "utf-8") as f:
             toks = f.read().split(" ")
         return Vocabulary(toks)
@@ -55,7 +55,10 @@ class Vocabulary:
     def __len__(self):
         
         return len(self.idx2word)
-    
+    def __call__(self, tok):
+        return self.lookup(tok)
+
+
 """
 Functions for reading and writing UD CONLL data
 """
@@ -63,17 +66,17 @@ CONLL_FIELDS = ["token", "pos", "features", "deprel"]
 MWE_TAGS = ["B", "I"]  # B for begin , I for inside
 
 
-def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>"]),
-             tags_vocab=Vocabulary(["B_X"])):
+def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>", "<pad>"]),
+             tags_vocab=Vocabulary(["B_X"]),deprel_vocab=Vocabulary(["<unk>"])):
     """
-    function to read and encode the corpus at one pass
+    function to read the corpus at one pass
     signature for train corpus : X_toks, Y_tags = readfile("corpus/train.conllu", update=True)
     signature for test corpus/ dev corpus:  X_test, Y_test = readfile("corpus/train.conllu", update=True, vocabtoks_train, vocabtags_train)
     """
 
     istream = open(filename, encoding="utf-8")
-    X_toks, Y_tags = [], []
-    sent_toks, sent_tags = [], []
+    X_toks, Y_tags, feat_depl = [], [],[]
+    sent_toks, sent_tags, sent_depl = [], [], []
 
     for line in istream:
         line = line.strip()
@@ -85,78 +88,92 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<
                 pass
             if tokidx == "1":
                 # beginning of sentence, add false toks
-                sent_toks.append(toks_vocab["<bos>"])
-                sent_tags.append(tags_vocab["B_X"])
+                sent_toks.append("<bos>")
+                sent_tags.append("B_X")
+                sent_depl.append("<unk>")
 
             # extract simple mwe tags
             mwe_tag = lambda x: "I" if features.startswith("component") else "B"
             # extract tagging information
-            sent_toks.append(toks_vocab.lookup(tok=token, update=update))
-            sent_tags.append(tags_vocab.lookup(tok=mwe_tag(features) + "_" + upos, update=update))
+            #tag = mwe_tag(features) + "_" + upos
+            tag= upos
+            sent_toks.append(token)
+            sent_tags.append(tag)
+            sent_depl.append(deprel)
+
+            if update:
+                toks_vocab.update(token)
+                tags_vocab.update(tag)
+                deprel_vocab.update(deprel)
 
         elif sent_toks:
             # end of sentence, add  false tokens
-            sent_toks.append(toks_vocab["<eos>"])
-            sent_tags.append(tags_vocab["B_X"])
+            sent_toks.append("<eos>")
+            sent_tags.append("B_X")
+            sent_depl.append("<unk>")
+
             X_toks.append(sent_toks)
             Y_tags.append(sent_tags)
-            sent_toks, sent_tags = [], []
+            feat_depl.append(sent_depl)
+            sent_toks, sent_tags,sent_depl = [], [],[]
 
     istream.close()
     # return the encoded data in list of list, the nested list represents the sentences
-    return X_toks, Y_tags, toks_vocab, tags_vocab
-
-
+    return X_toks, Y_tags, feat_depl, toks_vocab, tags_vocab,deprel_vocab
 # [{"token1": "token", "multiword": "mwe", "mwe lemma": "mwe lemma"}, {"token2": "token", "multiword": "mwe"}, {"token3": "token", "multiword": "mwe"}]
-
 
 class MWEDataset(Dataset):
 
-    def __init__(self, datafilename=None, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>"]),
-                 tags_vocab=Vocabulary(["B_X"]), window_size=0, isTrain=False, fixed_length = False):
+    def __init__(self, datafilename=None, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>", "<pad>"]),
+                 tags_vocab=Vocabulary(["B_X"]), deprel_vocab=Vocabulary(["<unk>"]), isTrain=False, window_size=0):
         """
         take as input either the path to a conllu file or a list of tokens
         we consider context size as the n preceding and n subsequent words in the text as the context for predicting the next word.
         """
         super(MWEDataset, self).__init__()
 
-        self.toks_vocab, self.tags_vocab = toks_vocab, tags_vocab
-
-        self.Xtoks_IDs, self.Ytags_IDs, self.toks_vocab, self.tags_vocab = readfile(datafilename,
-                                                                                    update=isTrain,
-                                                                                    toks_vocab=toks_vocab,
-                                                                                    tags_vocab=tags_vocab)
+        self.toks_vocab, self.tags_vocab, self.deprel_vocab = toks_vocab, tags_vocab, deprel_vocab
+        if datafilename:
+            self.Xtoks, self.Ytags, self.deprels, self.toks_vocab, self.tags_vocab , self.deprel_vocab= readfile(datafilename,
+                                                                                update=isTrain,
+                                                                                toks_vocab=toks_vocab,
+                                                                                tags_vocab=tags_vocab,
+                                                                                deprel_vocab =deprel_vocab,)
+            self.window_size = window_size
+            self.data = self.build_dataset()
+            self.tags_dist = Counter(itertools.chain(*self.Ytags))
 
         print('token Vocab size', len(self.toks_vocab))
-        self.window_size = window_size
-
-        if fixed_length:
-            self.data = self.build_dataset(self.Xtoks_IDs, self.Ytags_IDs)
 
     def __len__(self):
         return len(self.data)
 
-    def build_dataset(self, X_toks, Y_tags):
+    def build_dataset(self):
         """
-        build examples with fixed length contextual tokens as features
+        build fixed length examples with contextual tokens as features
         takes as input a nested list of encoded corpus, [sentences[tokens]]
         return a list of examples with context window features
         """
+        # print(X_toks)
         examples = []
-        for toks, tags in zip(X_toks, Y_tags):
+        for i in range(len(self.Xtoks)):
+            toks = ["<pad>"] * self.window_size + self.Xtoks[i] + ["<pad>"] * self.window_size  # 3+3+3
+            depl =  ["<unk>"] * self.window_size + self.deprels[i] + ["<unk>"] * self.window_size
+            for j in range(self.window_size, len(toks) - self.window_size, 1):
+                examples.append((toks[j - self.window_size: j + self.window_size + 1], self.Ytags[i][j - self.window_size], depl[j - self.window_size: j + self.window_size + 1]))
 
-            toks = [self.toks_vocab["<bos>"]] * self.window_size + toks + [
-                self.toks_vocab["<eos>"]] * self.window_size  # 3+3+3
+        """
+        for toks, tags in zip(self.Xtoks, self.Ytags):
+            toks = ["<pad>"] * self.window_size + toks + ["<pad>"] * self.window_size  # 3+3+3
 
             for i in range(self.window_size, len(toks) - self.window_size, 1):  # 3, 6, 1
+                examples.append((toks[i - self.window_size: i + self.window_size + 1], tags[i - self.window_size]))
+        """
 
-                examples.append((torch.tensor(toks[i - self.window_size: i + self.window_size + 1]),
-                                 torch.tensor(tags[i - self.window_size])))
-                # print(examples[-1])
+        # print(examples[-1])
         return examples
 
     def __getitem__(self, idx):
-
         return self.data[idx]
 
     def as_strings(self, batch_tensor):
@@ -165,10 +182,40 @@ class MWEDataset(Dataset):
         """
         out = []
         for line in batch_tensor.tolist():
-            out.append([self.tok_vocab.rev_lookup(idx) for idx in line])
+            out.append([self.toks_vocab.rev_lookup(idx) for idx in line])
         return out
 
-    def get_loader(self, batch_size=1, num_workers=0, word_dropout=0., shuffle=False):
-        return DataLoader(self, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
+    def get_loader(self, batch_size=1, num_workers=0, shuffle=False):
+        def mk_batch(selected_items):
+            XtoksIDs = []
+            YtagsIDs = []
+            deprels  = []
+            for tokens, tag, depl in selected_items:
+                x = torch.tensor([self.toks_vocab[tok] for tok in tokens])
+                y = torch.tensor(self.tags_vocab[tag])
+                depl=torch.tensor([self.deprel_vocab[id] for id in depl])
+                XtoksIDs.append(x)
+                YtagsIDs.append(y)
+                deprels.append(depl)
+            return torch.stack(XtoksIDs), torch.stack(deprels) , torch.stack(YtagsIDs)
+
+        # specify that the mk_batch function should be used to collate the individual samples into batches.
+        return DataLoader(self, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle, collate_fn=mk_batch)
 
 
+class Mysubset(MWEDataset):
+    """
+    an auxiliary class to take care of the K fold validation, split the train corpus into train and dev
+    """
+
+    def __init__(self, subset, toks_vocab, tags_vocab,deprel_vocab):
+        self.subset = subset
+        self.toks_vocab = toks_vocab
+        self.tags_vocab = tags_vocab
+        self.deprel_vocab=deprel_vocab
+
+    def __getitem__(self, index):
+        return self.subset[index]
+
+    def __len__(self):
+        return len(self.subset)
