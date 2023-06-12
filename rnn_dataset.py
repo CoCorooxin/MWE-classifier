@@ -32,9 +32,16 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>","<pad>"]), 
 
 
             # extract simple mwe tags
-            extr_mwe = lambda x: "I" if features.startswith("component") else "B"
+            #mwe_tag = lambda x: "I" if features.startswith("component") else "B"
+            #tag = mwe_tag(features) + "_" + upos2pos(pos)
+            mwe = ''
+            if features.startswith("component"):
+                mwe = "I" + "_"+upos2pos(pos)
+            elif features.startswith("mwe"):
+                mwe = "I" + "_"+upos2pos(pos)
+            else:
+                mwe = "O" + "_"+upos2pos(pos)
 
-            mwe = extr_mwe(features)+"_"+upos2pos(pos)
             toks.append(token)
             mwes.append(mwe)
 
@@ -55,14 +62,14 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>","<pad>"]), 
 
 # [{"token1": "token", "multiword": "mwe", "mwe lemma": "mwe lemma"}, {"token2": "token", "multiword": "mwe"}, {"token3": "token", "multiword": "mwe"}]
 
-class MweRnnDataset(Dataset):
+class RnnDataset(Dataset):
 
     def __init__(self, datafilename=None, toks_vocab=Vocabulary([ "<unk>", "<pad>"]), tags_vocab=Vocabulary([ "<unk>","<pad>"]), isTrain=False):
         """
         take as input either the path to a conllu file or a list of tokens
         we consider context size as the n preceding and n subsequent words in the text as the context for predicting the next word.
         """
-        super(MweRnnDataset, self).__init__()
+        super(RnnDataset, self).__init__()
 
         self.toks_vocab, self.tags_vocab  = toks_vocab, tags_vocab
         if datafilename:
@@ -76,8 +83,10 @@ class MweRnnDataset(Dataset):
 
     @staticmethod
     def from_string(sentence, toks_vocab, tags_vocab):
-        dataset      = MweRnnDataset(toks_vocab, tags_vocab)
-        dataset.data = [{"tok": [sentence.split()]}]
+        toks = sentence.split()
+        len_sent = len(toks)
+        dataset      = RnnDataset(toks_vocab, tags_vocab)
+        dataset.data = [{"tok": [toks], "mwe": ["<unk>" for i in range(len_sent)]}]
 
     @property
     def tag_padidx(self):
@@ -117,7 +126,7 @@ class MweRnnDataset(Dataset):
         # specify that the mk_batch function should be used to collate the individual samples into batches.
         return DataLoader(self, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle, collate_fn=mk_batch)
 
-class Mysubset(MweRnnDataset):
+class Mysubset(RnnDataset):
 
     """
     an auxiliary class to take care of the K fold validation, split the train corpus into train and dev

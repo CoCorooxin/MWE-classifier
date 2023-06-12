@@ -1,5 +1,6 @@
-from mwe_dataset import MWEDataset, Vocabulary, Mysubset
+from mlp_dataset import MWEDataset, Mysubset
 from torch.utils.data import Dataset, DataLoader, random_split
+from data_utils import Vocabulary
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -8,7 +9,7 @@ from models import MLP_baseline
 
 class MLPClassifier(nn.Module):
 
-    def __init__(self, name, toks_vocab, tags_vocab, window_size=0, emb_size=64, hidden_size=64, drop_out=0.):
+    def __init__(self, toks_vocab, tags_vocab, window_size=0, emb_size=64, hidden_size=64, drop_out=0.):
 
         super(MLPClassifier, self).__init__()
 
@@ -22,7 +23,6 @@ class MLPClassifier(nn.Module):
 
         self.FFW          = nn.Linear(hidden_size , len(tags_vocab))  # output # of classes
         self.logsoftmax   = nn.LogSoftmax(dim=1)
-        self.relu         = nn.ReLU()
 
         self.net = MLP_baseline(emb_size= emb_size*(window_size*2+1), hidden_size=hidden_size, drop_out = drop_out)
 
@@ -31,7 +31,8 @@ class MLPClassifier(nn.Module):
         emb = self.word_embedding(Xtoks_IDs) # Batch, inputsize*emb_size
         #print(emb.shape) #B, window_size, emb_size
         # input.view(b, -1) B, window_size * emb_size
-        output = self.logsoftmax(self.FFW(self.net(emb.view(bs, -1))))  #bs, seq*embsize
+        logits = self.net(emb.view(bs, -1))
+        output = self.logsoftmax(self.FFW(logits))  #bs, seq*embsize
         #print(output.shape)
         return  output # bs, seq, embsize
 
@@ -52,8 +53,8 @@ class MLPClassifier(nn.Module):
         test_loader = test_data.get_loader(batch_size=batch_size)
         num_train_examples = int(split_train * len(train_data))
         trainset, validset = random_split(train_data, [num_train_examples, len(train_data) - num_train_examples])
-        train_loader = Mysubset(trainset, self.toks_vocab, self.tags_vocab, self.deprel_vocab).get_loader( batch_size=batch_size, shuffle=True)
-        dev_loader = Mysubset(validset, self.toks_vocab, self.tags_vocab, self.deprel_vocab).get_loader( batch_size=batch_size, shuffle=False)
+        train_loader = Mysubset(trainset, self.toks_vocab, self.tags_vocab).get_loader( batch_size=batch_size, shuffle=True)
+        dev_loader = Mysubset(validset, self.toks_vocab, self.tags_vocab).get_loader( batch_size=batch_size, shuffle=False)
 
         train_loss = []
 
@@ -148,20 +149,20 @@ class MLPClassifier(nn.Module):
         return average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision
 
     @staticmethod
-    def load(modelfile,name, toks_vocab, tags_vocab, window_size, embsize, hidden_size, drop_out, device):
+    def load(modelfile, toks_vocab, tags_vocab, window_size, embsize, hidden_size, drop_out, device):
         toks_vocab = Vocabulary.read(toks_vocab)
         tags_vocab = Vocabulary.read(tags_vocab)
-        model      = MLPClassifier(name, toks_vocab,tags_vocab, window_size, embsize, hidden_size, drop_out)
+        model      = MLPClassifier(toks_vocab,tags_vocab, window_size, embsize, hidden_size, drop_out)
         model.load_params(modelfile,device)
         return model,toks_vocab, tags_vocab
 
     def load_params(self,param_filename,device):
         self.load_state_dict(torch.load(param_filename, map_location=device))
 
-    def save(self, path):
-        self.toks_vocab.write("toks.vocab")
-        self.tags_vocab.write("tags.vocab")
-        torch.save(self.state_dict(), path)
+    def save(self, path, name):
+        self.toks_vocab.write(os.path.join(path, "toks.txt"))
+        self.tags_vocab.write(os.path.join(path, "tags.txt"))
+        torch.save(self.state_dict(), os.path.join(path, name))
 
 
 if __name__ == '__main__':
@@ -178,7 +179,7 @@ if __name__ == '__main__':
     toks_vocab  = Vocabulary.read(config["TOKS_VOCAB"])
     tags_vocab  = Vocabulary.read(config["TAGS_VOCAB"])
 
-    model, toks_vocab, tags_vocab = MLPClassifier.load(config['MODEL_DIR'],config['NAME'], toks_vocab,tags_vocab, config['WINDOW_SIZE'], config['EMBSIZE'],config['HIDDENSIZE'], config['DROPOUT'], device=args.device)
+    model, toks_vocab, tags_vocab = MLPClassifier.load(config['MODEL_DIR'], toks_vocab,tags_vocab, config['WINDOW_SIZE'], config['EMBSIZE'],config['HIDDENSIZE'], config['DROPOUT'], device=args.device)
     #train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", reg=None, split_train=0.8):
 
     model.train_model(config["TRAIN"], config["TEST", config["EPOCHS"], config["LR"], config["BS"], config["SPLIT"], config["DEVICE"]])

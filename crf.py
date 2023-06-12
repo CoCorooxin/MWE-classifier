@@ -130,7 +130,6 @@ class CRF(nn.Module):
         for b in range(B):
             best_tag_b = best_tag[b].item()
             seq_len = int(masks[b, :].sum().item())
-
             best_path = [best_tag_b]
             for bps_t in reversed(bps[b, :seq_len]):
                 best_tag_b = bps_t[best_tag_b]

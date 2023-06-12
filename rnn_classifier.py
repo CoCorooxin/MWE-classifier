@@ -73,9 +73,8 @@ class MweRNN(nn.Module):
             for X_toks, Y_gold in tqdm(train_loader):
                 bs, seq = X_toks.shape
                 optimizer.zero_grad()
-
                 logits, masks = self.forward(X_toks)
-                #print(logits.shape)
+                #print(X_toks.shape)
                 loss =  self.crf.loss(logits, Y_gold, masks) #conditional random field
                 #loss_value = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
                 ep_loss.append(loss.mean().item())
@@ -95,7 +94,7 @@ class MweRNN(nn.Module):
         print("Weighted: Precision %.4f | Recall  %.4f |  F-score  %.4f " % (weighted_f1_score, weighted_recall, weighted_precision))
 
     def validate(self, data_loader, device="cpu"):
-        loss_fnc = nn.NLLLoss()
+        self.to(device)
         loss_lst = []
         self.eval()
         with torch.no_grad():
@@ -108,10 +107,24 @@ class MweRNN(nn.Module):
                 loss_lst.append(loss)
         return sum(loss_lst) / len(loss_lst)
 
-    def evaluate(self, test_loader):
+    def predict(self, batch_tensors, device = "cpu"):
+        """
+        :param batch_tensors: a batch tensor of input seqs
+        :return: the predicted best path and the scores
+        """
+        self.eval()
+        self.to(device)
+        with torch.no_grad():
+            logits, masks          = self.forward(batch_tensors)
+            best_score, best_paths = self.crf(logits, masks)
+
+        return best_score, best_paths
+
+    def evaluate(self, test_loader, device = "cpu"):
         """
         evaluation the classifier with confusion matrix : precision recall and f-score
         """
+        self.to(device)
         self.eval()
         num_tags = len(self.tags_vocab)
         # print(num_tags)
@@ -167,7 +180,7 @@ class MweRNN(nn.Module):
     def load(modelfile,name, toks_vocab, tags_vocab, embsize, hidden_size, drop_out, device):
         toks_vocab = Vocabulary.read(toks_vocab)
         tags_vocab = Vocabulary.read(tags_vocab)
-        model      = MweRNN(name, toks_vocab,tags_vocab, embsize, hidden_size, drop_out, device)
+        model      = MweRNN(name, toks_vocab,tags_vocab, embsize, hidden_size, drop_out)
         model.load_params(modelfile,device)
         return model,toks_vocab, tags_vocab
 
@@ -175,8 +188,8 @@ class MweRNN(nn.Module):
         self.load_state_dict(torch.load(param_filename, map_location=device))
 
     def save(self, path, name):
-        self.toks_vocab.write(os.path.join(path, "toks.vocab"))
-        self.tags_vocab.write(os.path.join(path, "tags.vocab"))
+        self.toks_vocab.write(os.path.join(path, "toks.txt"))
+        self.tags_vocab.write(os.path.join(path, "tags.txt"))
         torch.save(self.state_dict(), os.path.join(path, name))
 
 
