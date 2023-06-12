@@ -175,13 +175,23 @@ if __name__ == '__main__':
     args = parser.parse_args()
     cstream = open(args.config_file)
     config = yaml.safe_load(cstream)
+    lr = float(config["LR"])
+    split = float(config["SPLIT"])
+    embsize = int(config["EMBSIZE"])
+    hidsize = int(config["HIDDENSIZE"])
+    bs      = int(config["BATCHSIZE"])
+    winsize = int(config["WINDOW_SIZE"])
+    epochs  = int(config["EPOCHS"])
+    dropout = float(config["DROPOUT"])
+    train   = MWEDataset(config["TRAIN"], isTrain = True)
+    test    = MWEDataset(config["TEST"], isTrain = True)
+
     cstream.close()
     toks_vocab  = Vocabulary.read(config["TOKS_VOCAB"])
     tags_vocab  = Vocabulary.read(config["TAGS_VOCAB"])
+    model       = MLPClassifier(toks_vocab, tags_vocab,winsize, embsize,hidsize, dropout)
+    #train_data, test_data, epochs=10, lr
+    #(self, train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", split_train=0.8):
+    model.train_model(train, test, epochs, lr, bs,config["DEVICE"], split)
 
-    model, toks_vocab, tags_vocab = MLPClassifier.load(config['MODEL_DIR'], toks_vocab,tags_vocab, config['WINDOW_SIZE'], config['EMBSIZE'],config['HIDDENSIZE'], config['DROPOUT'], device=args.device)
-    #train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", reg=None, split_train=0.8):
-
-    model.train_model(config["TRAIN"], config["TEST", config["EPOCHS"], config["LR"], config["BS"], config["SPLIT"], config["DEVICE"]])
-
-    model.save("trained_models", "mod.pth")
+    model.save(config["MODEL_DIR"], config["MODEL_FILE"])

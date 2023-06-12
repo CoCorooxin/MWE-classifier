@@ -36,11 +36,11 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>","<pad>"]), 
             #tag = mwe_tag(features) + "_" + upos2pos(pos)
             mwe = ''
             if features.startswith("component"):
-                mwe = "I" #+ "_"+upos2pos(pos)
+                mwe = "I" + "_"+upos2pos(pos)
             elif features.startswith("mwe"):
-                mwe = "B" #+ "_"+upos2pos(pos)
+                mwe = "B" + "_"+upos2pos(pos)
             else:
-                mwe = "B" #+ "_"+upos2pos(pos)
+                mwe = "B" + "_"+upos2pos(pos)
 
             toks.append(token)
             mwes.append(mwe)

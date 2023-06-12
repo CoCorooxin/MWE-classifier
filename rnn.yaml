@@ -1,12 +1,15 @@
-MODEL_FILE : "atrnn_mod.pth"
-TOKS_VOCAB : "toks.txt"
-TAGS_VOCAB : "tags.txt"
-NAME       : "ATNN"
+MODEL_FILE : "test_mod.pth"
+MODEL_DIR  : "trained_models"
+TOKS_VOCAB : "trained_models/toks.txt"
+TAGS_VOCAB : "trained_models/tags_posbi.txt"
+NAME       : "RNN"
 TRAIN      : "corpus/train.conllu"
 TEST       : "corpus/test.conllu"
-WINDOW_SIZE: 3
 EMBSIZE    : 64
 HIDDENSIZE : 64
 BATCHSIZE  : 16
 EPOCHS     : 30
 DROPOUT    : 0.1
+DEVICE     : "cpu"
+LR         : 1e-3
+SPLIT      : 0.8

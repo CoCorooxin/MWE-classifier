@@ -1,12 +1,12 @@
+MODEL_DIR  : "trained_models"
 MODEL_FILE : "model.pth"
 TOKS_VOCAB : "toks.vocab"
 TAGS_VOCAB : "tags.vocab"
-NAME       : "MLP"
 TRAIN      : "corpus/train.conllu"
 TEST       : "corpus/test.conllu"
-WINDOW_SIZE: 3
+WINDOW_SIZE: 6
 EMBSIZE    : 64
 HIDDENSIZE : 64
 BATCHSIZE  : 16
 EPOCHS     : 10
-DROPOUT    : 0.3
+DROPOUT    : 0.1
