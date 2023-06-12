@@ -139,7 +139,7 @@ class MweRNN(nn.Module):
                 best_score, best_paths = self.crf(logits, masks) #viterbi
                 #print(best_paths.shape)
                 for i in range(len(best_paths)):
-                    path = best_paths[i]
+                    path = torch.tensor(best_paths[i])
                     gold = torch.tensor([j for j in Y_golds[i] if j != self.padidx])
                     for tag in path:
                         TP[tag] += ((path == tag) & (gold == tag)).sum()

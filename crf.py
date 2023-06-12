@@ -135,7 +135,7 @@ class CRF(nn.Module):
                 best_tag_b = bps_t[best_tag_b]
                 best_path.append(best_tag_b)
             # drop the last tag and reverse the left
-            best_paths.append(torch.tensor(best_path[-2::-1]))
+            best_paths.append(best_path[-2::-1])
 
         return best_score, best_paths
 
