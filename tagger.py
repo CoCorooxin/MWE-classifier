@@ -26,7 +26,7 @@ class Tagger:
         input = [torch.tensor([self.toks_vocab[tok] for tok in str(sent).split()]) for sent in sentences]
 
         X     = pad_sequence(input, batch_first = True, padding_value = self.toks_vocab["<pad>"])
-
+        #print(X.shape)
         best_scores, best_paths= self.model.predict(X)
         out                    = []
 
