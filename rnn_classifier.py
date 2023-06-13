@@ -4,37 +4,37 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 import torch.nn as nn
 from tqdm import tqdm
-import rnn_dataset
 from crf import CRF
 import os
 from rnn_dataset import RnnDataset
+from gensim.models import KeyedVectors, Word2Vec
 
 
 class MweRNN(nn.Module):
 
-    def __init__(self, name, toks_vocab, tags_vocab, emb_size=64, hidden_size=64, drop_out=0.):
+    def __init__(self, name, toks_vocab, tags_vocab, emb_size=64, hidden_size=64, drop_out=0., pretrained = False, device = "cpu"):
 
         super(MweRNN, self).__init__()
-
-        self.word_embedding = nn.Embedding(len(toks_vocab), emb_size)
-        #self.depl_embedding = nn.Embedding(len(deprel_vocab), emb_size)
 
         self.toks_vocab   = toks_vocab
         self.tags_vocab   = tags_vocab
         self.padidx       = tags_vocab["<pad>"]
+        self.emb_size     = emb_size
+
+        self.word_embedding = nn.Embedding(len(toks_vocab), emb_size).to(device)
+        if pretrained:
+            self._load_pretrained()
 
         self.relu         = nn.ReLU()
         self.dropout = nn.Dropout(drop_out)
 
-        self.crf = CRF(emb_size, self.tags_vocab)
-
         if name == "RNN":
-            self.rnn = nn.RNN(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True)
+            self.rnn = nn.RNN(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
         if name == "LSTM":
-            self.rnn = nn.LSTM(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True)
+            self.rnn = nn.LSTM(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
         if name == "ATRNN":
-            self.rnn = AttentionRNN(emb_size, hidden_size, drop_out = drop_out)
-
+            self.rnn = AttentionRNN(emb_size, hidden_size, drop_out = drop_out, device = device)
+        self.crf = CRF(hidden_size, self.tags_vocab)
 
     def forward(self, Xtoks_IDs):
 
@@ -47,24 +47,28 @@ class MweRNN(nn.Module):
         #print(output.shape)
         return logits, (~masks) # bs, seq, embsize
 
-    def _init_weights(self):
-        pass
+    def _load_pretrained(self):
+        word_vectors = KeyedVectors.load_word2vec_format("corpus/frWac_non_lem_no_postag_no_phrase_200_cbow_cut100.bin", binary=True, limit=500000)
+        pretrained_weights = []
+        for idx,word in enumerate(self.toks_vocab.idx2word):
+            if word in word_vectors:
+                pretrained_weights.append(torch.tensor(word_vectors[word]))
+            else:
+                pretrained_weights.append(torch.FloatTensor(self.emb_size).uniform_(-0.25, 0.25))  # Randomly initialize for unknown words
+        pretrained_weights = torch.stack(pretrained_weights)
+        self.word_embedding.weight.data.copy_(pretrained_weights)
+        self.word_embedding.weight.requires_grad = True
 
-    def train_model(self, train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", split_train=0.8):
+    def train_model(self, train_data, test_data, dev_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", split =0.8):
         """
         the train data is in form of nested lists: [sentences[tokens]]
         """
         self.to(device)
         # adaptive gradient descent, for every update lr is a function of the amount of change in the parameters
-        optimizer   = torch.optim.Adam(self.parameters(), lr=lr)
+        optimizer   = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-5)
         #optimizer = torch.optim.SGD(self.parameters(), lr=lr, momentum=0.9)
-        loss_fnc = nn.NLLLoss()
-        test_loader = test_data.get_loader(batch_size=batch_size)
-        num_train_examples = int(split_train * len(train_data))
-        trainset, validset = random_split(train_data, [num_train_examples, len(train_data) - num_train_examples])
-        train_loader = rnn_dataset.Mysubset(trainset, self.toks_vocab, self.tags_vocab).get_loader(batch_size=batch_size, shuffle=True)
-        dev_loader = rnn_dataset.Mysubset(validset, self.toks_vocab, self.tags_vocab).get_loader(batch_size=batch_size,shuffle=False)
-
+        test_loader, dev_loader = test_data.get_loader(batch_size=batch_size * 10), dev_data.get_loader(batch_size=batch_size * 10)
+        train_loader = train_data.get_loader(batch_size=batch_size)
         train_loss = []
 
         for e in range(epochs):
@@ -74,9 +78,9 @@ class MweRNN(nn.Module):
             for X_toks, Y_gold in tqdm(train_loader):
                 bs, seq = X_toks.shape
                 optimizer.zero_grad()
-                logits, masks = self.forward(X_toks)
+                logits, masks = self.forward(X_toks.to(device))
                 #print(X_toks.shape)
-                loss =  self.crf.loss(logits, Y_gold, masks) #conditional random field
+                loss =  self.crf.loss(logits, Y_gold.to(device), masks) #conditional random field
                 #loss_value = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
                 ep_loss.append(loss.mean().item())
                 loss.backward(loss)
@@ -84,7 +88,7 @@ class MweRNN(nn.Module):
 
             loss = sum(ep_loss) / len(ep_loss)
             train_loss.append(loss)
-            valid_loss = self.validate(dev_loader)
+            valid_loss = self.validate(dev_loader, device = device)
 
             # print("Epoch %d | Mean train loss  %.4f | Mean dev loss %.4f"%(e,loss, devloss) )
             print("Epoch %d | Mean train loss  %.4f |  Mean dev loss  %.4f " % (e, loss, valid_loss))
@@ -101,9 +105,9 @@ class MweRNN(nn.Module):
         with torch.no_grad():
             for X_toks, Y_gold in tqdm(data_loader):
                 bs, seq = X_toks.shape
-                logits, masks = self.forward(X_toks)
+                logits, masks = self.forward(X_toks.to(device))
                 #loss = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
-                loss = self.crf.loss(logits , Y_gold , masks)
+                loss = self.crf.loss(logits , Y_gold.to(device), masks)
 
                 loss_lst.append(loss)
         return sum(loss_lst) / len(loss_lst)
@@ -136,8 +140,9 @@ class MweRNN(nn.Module):
         with torch.no_grad():
             for X_toks, Y_golds in tqdm(test_loader):
                 # Forward pass
-                logits, masks = self.forward(X_toks)
+                logits, masks = self.forward(X_toks.to(device))
                 best_score, best_paths = self.crf(logits, masks) #viterbi
+                best_paths = best_paths
                 #print(best_paths.shape)
                 for i in range(len(best_paths)):
                     path = torch.tensor(best_paths[i])
@@ -206,22 +211,26 @@ if __name__ == '__main__':
     cstream = open(args.config_file)
     config = yaml.safe_load(cstream)
     lr = float(config["LR"])
-    split = float(config["SPLIT"])
+
     embsize = int(config["EMBSIZE"])
     hidsize = int(config["HIDDENSIZE"])
     bs      = int(config["BATCHSIZE"])
     epochs  = int(config["EPOCHS"])
     dropout = float(config["DROPOUT"])
     train   = RnnDataset(config["TRAIN"], isTrain = True)
-    test    = RnnDataset(config["TEST"], isTrain = True)
+    test    = RnnDataset(config["TEST"])
+    dev     = RnnDataset(config["DEV"])
+    device  = config["DEVICE"]
+    pretrain= config["PRETRAINED"]
 
     cstream.close()
-    toks_vocab  = Vocabulary.read(config["TOKS_VOCAB"])
-    tags_vocab  = Vocabulary.read(config["TAGS_VOCAB"])
-    model       = MweRNN(config['NAME'], toks_vocab, tags_vocab, embsize,hidsize, dropout)
+    toks_vocab  = train.toks_vocab
+    tags_vocab  = train.tags_vocab
+    model       = MweRNN(config['NAME'], toks_vocab, tags_vocab, embsize,hidsize, dropout, pretrained = pretrain, device = device)
     #train_data, test_data, epochs=10, lr
-    #(self, train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", split_train=0.8):
-    model.train_model(train, test, epochs, lr, bs,config["DEVICE"], split)
+    #(self, train_data, test_data, epochs=10, lr=1e-3, batch_size=10, device="cpu", split=0.8):
+    model.train_model(train, test, dev, epochs, lr, bs, device = device)
+
 
     model.save(config["MODEL_DIR"], config["MODEL_FILE"])
 

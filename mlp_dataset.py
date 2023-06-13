@@ -2,7 +2,7 @@ from torch.utils.data import Dataset, DataLoader
 import torch
 from collections import Counter
 import itertools
-from data_utils import Vocabulary, upos2pos
+from data_utils import Vocabulary
 
 """
 Functions for reading and writing UD CONLL data
@@ -31,10 +31,15 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<pad>"]),
 
             except ValueError:
                 pass
-
-            mwe_tag = lambda x: "I" if features.startswith("component") else "B"
+            mwe = ""
+            if features.startswith("component"):
+                mwe = "I"
+            elif features.startswith("mwe"):
+                mwe = "B"
+            else:
+                mwe = "O"
             # extract tagging information
-            tag = mwe_tag(features) + "_" + upos2pos(pos)
+            tag = mwe + "_" + (pos)
             sent_toks.append(token)
             sent_tags.append(tag)
 
@@ -51,7 +56,6 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<pad>"]),
     istream.close()
     # return the encoded data in list of list, the nested list represents the sentences
     return X_toks, Y_tags, toks_vocab, tags_vocab
-# [{"token1": "token", "multiword": "mwe", "mwe lemma": "mwe lemma"}, {"token2": "token", "multiword": "mwe"}, {"token3": "token", "multiword": "mwe"}]
 
 class MWEDataset(Dataset):
 
@@ -120,20 +124,3 @@ class MWEDataset(Dataset):
 
         # specify that the mk_batch function should be used to collate the individual samples into batches.
         return DataLoader(self, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle, collate_fn=mk_batch)
-
-
-class Mysubset(MWEDataset):
-    """
-    an auxiliary class to take care of the K fold validation, split the train corpus into train and dev
-    """
-
-    def __init__(self, subset, toks_vocab, tags_vocab):
-        self.subset = subset
-        self.toks_vocab = toks_vocab
-        self.tags_vocab = tags_vocab
-
-    def __getitem__(self, index):
-        return self.subset[index]
-
-    def __len__(self):
-        return len(self.subset)

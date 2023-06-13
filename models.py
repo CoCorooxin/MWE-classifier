@@ -74,16 +74,16 @@ class Attention(nn.Module):
         scores = Q @ K.transpose(-2, -1) #bs, seq, seq
 
         attention_wights = F.softmax(scores / sqrt(emb_size), dim=-1)  # bs, seq, seq
-        V = V + attention_wights @ (self.ln1(V))
-        V = V + self.FFW(self.ln2(V)) #  bs, seq, seq @ bs, seq, embsize = bs, seq, embsize
+        #V = V + attention_wights @ (self.ln1(V))
+        #V = V + self.FFW(self.ln2(V)) #  bs, seq, seq @ bs, seq, embsize = bs, seq, embsize
         #print(out.shape)
-        return V   #+ self.FFW(self.ln2(attention_wights @ (self.ln1(V))))
+        return V  + self.FFW(self.ln2(attention_wights @ (self.ln1(V))))
 
 class AttentionRNN(nn.Module):
-    def __init__(self,emb_size, hidden_size, drop_out=0.):
+    def __init__(self,emb_size, hidden_size, drop_out=0., device = "cpu"):
         super(AttentionRNN, self).__init__()
-        self.rnn = nn.RNN(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True)
-        self.attention = Attention(emb_size, drop_out= drop_out)  # Add attention layer
+        self.rnn = nn.RNN(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
+        self.attention = Attention(hidden_size, drop_out= drop_out)  # Add attention layer
 
     def forward(self, xembeddings):
         logits, _ = self.rnn(xembeddings)

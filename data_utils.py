@@ -1,3 +1,4 @@
+import json
 class Vocabulary:
     """
     general encoding class mapping str -> index and vice versa
@@ -60,34 +61,10 @@ class Vocabulary:
         return self.lookup(tok)
 
 
-def upos2pos(ud_pos_tag):
-    """
-    Convert a UPOS tag to the simple POS tag scheme.
-    """
-    # Define a mapping from UD POS tags to the other scheme
-    mapping = {
-        'NOUN': 'N',
-        'VERB': 'V',
-        'ADJ': 'A',
-        'ADV': 'ADV',
-        'PRON': 'CL',
-        'PRO': 'CL',
-        'DET': 'D',
-        'ADP': 'P',
-        'PUNCT': 'PONCT',
-        'CCONJ': 'C',
-        'SCONJ': 'C',
-        'NUM': 'NC',
-        'PART': 'P',
-        'INTJ': 'I',
-        'X': 'X',
-        'SYM': 'S',
-        'CONJ': 'C',
-        "PROPN": 'N',
-        'AUX': 'V',
-    }
+def save_word_embeddings(embeddings, output_file):
+    embedding_dict = {}
+    for token, embedding in embeddings.items():
+        embedding_dict[token] = embedding.tolist()
 
-    # Map the UD POS tag to the other scheme, or use a default value if not found
-    pos_tag = mapping.get(ud_pos_tag, ud_pos_tag)
-
-    return pos_tag
+    with open(output_file, 'w') as json_file:
+        json.dump(embedding_dict, json_file)

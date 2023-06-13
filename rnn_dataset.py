@@ -3,7 +3,7 @@ import torch
 from torch.nn.functional import pad
 from collections import Counter
 import itertools
-from data_utils import Vocabulary,upos2pos
+from data_utils import Vocabulary
 
 """
 Functions for reading and writing UD CONLL data
@@ -36,11 +36,11 @@ def readfile(filename, update=False, toks_vocab=Vocabulary([ "<unk>","<pad>"]), 
             #tag = mwe_tag(features) + "_" + upos2pos(pos)
             mwe = ''
             if features.startswith("component"):
-                mwe = "I" + "_"+upos2pos(pos)
+                mwe = "I" + "_"+(pos)
             elif features.startswith("mwe"):
-                mwe = "B" + "_"+upos2pos(pos)
+                mwe = "B" + "_"+(pos)
             else:
-                mwe = "B" + "_"+upos2pos(pos)
+                mwe = "O" + "_"+(pos)
 
             toks.append(token)
             mwes.append(mwe)
@@ -126,20 +126,7 @@ class RnnDataset(Dataset):
         # specify that the mk_batch function should be used to collate the individual samples into batches.
         return DataLoader(self, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle, collate_fn=mk_batch)
 
-class Mysubset(RnnDataset):
 
-    """
-    an auxiliary class to take care of the K fold validation, split the train corpus into train and dev
-    """
-    def __init__(self, subset, toks_vocab, tags_vocab):
-        self.subset = subset
-        self.toks_vocab = toks_vocab
-        self.tags_vocab = tags_vocab
-
-    def __getitem__(self, index):
-        return self.subset[index]
-    def __len__(self):
-        return len(self.subset)
 
 if __name__ == '__main__':
     corpus, toks_vocab, tags_vocab, deprel_vocab = readfile("corpus/train.conllu")

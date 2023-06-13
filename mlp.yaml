@@ -1,12 +1,14 @@
 MODEL_DIR  : "trained_models"
-MODEL_FILE : "model.pth"
-TOKS_VOCAB : "toks.vocab"
-TAGS_VOCAB : "tags.vocab"
-TRAIN      : "corpus/train.conllu"
-TEST       : "corpus/test.conllu"
-WINDOW_SIZE: 6
-EMBSIZE    : 64
-HIDDENSIZE : 64
-BATCHSIZE  : 16
+MODEL_FILE : "mlp_mod.pth"
+TRAIN      : "corpus/surf.ftb.train"
+TEST       : "corpus/surf.ftb.test"
+DEV        : "corpus/surf.ftb.dev"
+WINDOW_SIZE: 3
+EMBSIZE    : 200
+HIDDENSIZE : 128
+BATCHSIZE  : 64
 EPOCHS     : 10
 DROPOUT    : 0.1
+DEVICE     : "cuda"
+PRETRAINED : True
+LR         : 0.0001

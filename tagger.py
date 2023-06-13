@@ -12,7 +12,7 @@ class Tagger:
 
         self.model, self.toks_vocab, self.tags_vocab = MweRNN.load(os.path.join(mod_dir, filename), modname,
                                                                    os.path.join(mod_dir, toksfile),
-                                                                   os.path.join(mod_dir, tagsfile), embsize=64, hidden_size=64, drop_out=0.1, device="cpu")
+                                                                   os.path.join(mod_dir, tagsfile), embsize=200, hidden_size=128, drop_out=0.1, device="cpu")
 
         self.model.to("cpu")
         self.model.eval()
