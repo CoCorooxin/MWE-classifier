@@ -11,8 +11,8 @@ CONLL_FIELDS = ["token", "pos", "features", "deprel"]
 MWE_TAGS = ["B", "I"]  # B for begin , I for inside
 
 
-def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>", "<pad>"]),
-             tags_vocab=Vocabulary(["B_X"])):
+def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<pad>"]),
+             tags_vocab=Vocabulary(["<unk>", "<pad>"])):
     """
     function to read the corpus at one pass
     signature for train corpus : X_toks, Y_tags = readfile("corpus/train.conllu", update=True)
@@ -55,8 +55,8 @@ def readfile(filename, update=False, toks_vocab=Vocabulary(["<unk>", "<bos>", "<
 
 class MWEDataset(Dataset):
 
-    def __init__(self, datafilename=None, toks_vocab=Vocabulary(["<unk>", "<bos>", "<eos>", "<pad>"]),
-                 tags_vocab=Vocabulary(["B_X"]), isTrain=False, window_size=0):
+    def __init__(self, datafilename=None, toks_vocab=Vocabulary(["<unk>", "<pad>"]),
+                 tags_vocab=Vocabulary(["<unk>", "<pad>"]), isTrain=False, window_size=0):
         """
         take as input either the path to a conllu file or a list of tokens
         we consider context size as the n preceding and n subsequent words in the text as the context for predicting the next word.
