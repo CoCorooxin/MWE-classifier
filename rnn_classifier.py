@@ -142,11 +142,12 @@ class MweRNN(nn.Module):
                 for i in range(len(best_paths)):
                     path = torch.tensor(best_paths[i])
                     gold = torch.tensor([j for j in Y_golds[i] if j != self.padidx])
-                    for tag in path:
+
+                    for tag in range(num_tags):
                         TP[tag] += ((path == tag) & (gold == tag)).sum()
                         FP[tag] += ((path == tag) & (gold != tag)).sum()
                         FN[tag] += ((path != tag) & (gold == tag)).sum()
-                        class_counts[tag] += (gold == tag).sum()
+                        class_counts[tag] += (gold==tag).sum()
 
         # Calculate precision, recall, and F1 score for each tag
         precision = TP / (TP + FP)

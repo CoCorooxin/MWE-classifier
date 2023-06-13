@@ -80,7 +80,7 @@ class MLPClassifier(nn.Module):
             print("Epoch %d | Mean train loss  %.4f |  Mean dev loss  %.4f " % (e, loss, valid_loss))
             print()
 
-        average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision = self.evaluate(test_loader)
+        class_counts, TP, FP, FN, average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision = self.evaluate(test_loader)
         print("AVR: Precision %.4f | Recall  %.4f |  F-score  %.4f " % (average_precision, average_recall, average_f1_score))
         print("Weighted: Precision %.4f | Recall  %.4f |  F-score  %.4f " % (weighted_f1_score, weighted_recall, weighted_precision))
 
@@ -146,7 +146,7 @@ class MLPClassifier(nn.Module):
         weighted_recall = torch.sum(recall * class_weights)
         weighted_precision = torch.sum(precision * class_weights)
 
-        return average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision
+        return class_counts, TP, FP, FN, average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision
 
     @staticmethod
     def load(modelfile, toks_vocab, tags_vocab, window_size, embsize, hidden_size, drop_out, device):
