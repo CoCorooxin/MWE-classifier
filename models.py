@@ -89,10 +89,11 @@ class Attention(nn.Module):
         scores = Q @ K.transpose(-2, -1) #bs, seq, seq
         scores = scores.masked_fill(mask.unsqueeze(1), float('-inf'))
         attention_wights = F.softmax(scores / sqrt(emb_size), dim=-1)  # bs, seq, seq
+        #with residual connections
         #V = V + attention_wights @ (self.ln1(V))
         #V = V + self.FFW(self.ln2(V)) #  bs, seq, seq @ bs, seq, embsize = bs, seq, embsize
         #print(out.shape)
-        return self.FFW(self.ln2(attention_wights @ (self.ln1(V))))
+        return V + self.FFW(self.ln2(attention_wights @ (self.ln1(V))))
 
 class AttentionRNN(nn.Module):
     def __init__(self,emb_size, hidden_size, drop_out=0., device = "cpu"):
