@@ -1,6 +1,8 @@
 # Multi Word Expression (MWE) classifier with enriched morpho syntactic features 
 
-The architectures variants implemented here are fixed length MLP and RNN with conditional random fields([CRF](https://arxiv.org/abs/1508.01991)). The hyperparameters are tuned using grid search.
+The architectures variants implemented here are fixed length MLP and RNN with conditional random fields([CRF](https://arxiv.org/abs/1508.01991)). A mini pretrained w2v is included in the model.
+
+ The hyperparameters are tuned using grid search. 
 
 ### 1. How to train the models :
 
@@ -14,7 +16,9 @@ b. Or you can run the following commands from your terminal, supposed that we ar
 pip install -r requirements.txt
 ```
 
-​     To train a MLP model
+​    You can download the pretrained w2v into the working directory from here: https://fauconnier.github.io/, or simply set pretrained to False, asking the model to train from scrach the word embedding.
+
+  To train a MLP model
 
 ```
 python ml[_classifier.py mlp.yaml
@@ -26,7 +30,7 @@ python ml[_classifier.py mlp.yaml
 python rnn_classifier.py rnn.yaml
 ```
 
-​If you want to change other variants than vanilla RNN, you can change the "NAME" argument inside the yaml file to "LSTM" or "ATTRNN".
+If you want to change other variants than vanilla RNN, you can change the "NAME" argument inside the yaml file to "LSTM" or "ATTRNN".
 
 ### 2. The corpus used to train the classifier is the french tree bank, it can be found in the folder "corpus":
 

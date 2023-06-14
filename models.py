@@ -34,7 +34,22 @@ The following models all have a CRF encode and decoder
 II. The Second model implemented is a one layer bi-directional RNN sequential model
 It is said to be benefitial to our sequential task
 """
+class RNNmwe(nn.Module):
+    def __init__(self, embsize, hidden_size, device):
+        super(RNNmwe, self).__init__()
+        self.rnn = nn.RNN(embsize, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
 
+    def forward(self, xembeddings, mask):
+        # x: input sequences of shape (B, S, E)
+        # mask: mask tensor of shape (B, S)
+
+        # Apply mask to the embeds sequences
+        masked_x = xembeddings * mask.unsqueeze(-1)
+
+        # Pass the masked input sequences to the RNN layer
+        output, _ = self.rnn(masked_x)
+
+        return output, _
 
 """
 III. The third model implemented is a bi-directional RNN with an attention layer at the output, I figure
@@ -60,7 +75,7 @@ class Attention(nn.Module):
             nn.ReLU()
         )
 
-    def forward(self, xembeddings):
+    def forward(self, xembeddings, mask):
         bs, seq_len, emb_size = xembeddings.shape
 
         #positional_embeds = self.positional_encoding(xembeddings)
@@ -72,12 +87,12 @@ class Attention(nn.Module):
         Q = self.Wq(xembeddings)
         V = self.Wv(xembeddings) #bs, seq, embsize
         scores = Q @ K.transpose(-2, -1) #bs, seq, seq
-
+        scores = scores.masked_fill(mask.unsqueeze(1), float('-inf'))
         attention_wights = F.softmax(scores / sqrt(emb_size), dim=-1)  # bs, seq, seq
         #V = V + attention_wights @ (self.ln1(V))
         #V = V + self.FFW(self.ln2(V)) #  bs, seq, seq @ bs, seq, embsize = bs, seq, embsize
         #print(out.shape)
-        return V  + self.FFW(self.ln2(attention_wights @ (self.ln1(V))))
+        return self.FFW(self.ln2(attention_wights @ (self.ln1(V))))
 
 class AttentionRNN(nn.Module):
     def __init__(self,emb_size, hidden_size, drop_out=0., device = "cpu"):
@@ -85,13 +100,29 @@ class AttentionRNN(nn.Module):
         self.rnn = nn.RNN(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
         self.attention = Attention(hidden_size, drop_out= drop_out)  # Add attention layer
 
-    def forward(self, xembeddings):
+    def forward(self, xembeddings, mask):
         logits, _ = self.rnn(xembeddings)
-        attn_output = self.attention(logits)
+        attn_output = self.attention(logits, mask)
         return attn_output, _
 
-    def __call__(self, xembeddings):
-        return self.forward(xembeddings)
+    def __call__(self, xembeddings, mask):
+        return self.forward(xembeddings, mask)
 """
 IV a LSTM model is also implemented.this one is just to see if the RNN with Attention achieve better result than the classic LSTM implementation
 """
+class LSTMmwe(nn.Module):
+    def __init__(self, embsize, hidden_size, device):
+        super(LSTMmwe, self).__init__()
+        self.lstm = nn.LSTM(embsize, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
+
+    def forward(self, xembeddings, mask):
+        # x: input sequences of shape (B, S, E)
+        # mask: mask tensor of shape (B, S)
+
+        # Apply mask to the embeds sequences
+        masked_x = xembeddings * mask.unsqueeze(-1)
+
+        # Pass the masked input sequences to the RNN layer
+        output, _ = self.lstm(masked_x)
+
+        return output, _

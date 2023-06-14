@@ -1,5 +1,5 @@
 from data_utils import Vocabulary
-from models import AttentionRNN
+from models import AttentionRNN, RNNmwe, LSTMmwe
 from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 import torch.nn as nn
@@ -29,23 +29,22 @@ class MweRNN(nn.Module):
         self.dropout = nn.Dropout(drop_out)
 
         if name == "RNN":
-            self.rnn = nn.RNN(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
+            self.rnn = RNNmwe(emb_size, hidden_size, device = device)
         if name == "LSTM":
-            self.rnn = nn.LSTM(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
+            self.rnn = LSTMmwe(emb_size, hidden_size, device = device)
         if name == "ATRNN":
             self.rnn = AttentionRNN(emb_size, hidden_size, drop_out = drop_out, device = device)
         self.crf = CRF(hidden_size, self.tags_vocab)
 
-    def forward(self, Xtoks_IDs):
+    def forward(self, Xtoks_IDs, masks):
 
         emb = self.word_embedding(Xtoks_IDs)#+ self.depl_embedding(deprel)  # Batch, inputsize*emb_size
         #print(emb.shape) #B, window_size, emb_size
         # input.view(b, -1) B, window_size * emb_size
-        logits, _ = self.rnn(emb)
+        logits, _ = self.rnn(emb, masks)   #B, seq, hiddensize
 
-        masks = (Xtoks_IDs == self.toks_vocab["<pad>"])
         #print(output.shape)
-        return logits, (~masks) # bs, seq, embsize
+        return logits # bs, seq, embsize
 
     def _load_pretrained(self):
         word_vectors = KeyedVectors.load_word2vec_format("corpus/frWac_non_lem_no_postag_no_phrase_200_cbow_cut100.bin", binary=True, limit=500000)
@@ -78,9 +77,10 @@ class MweRNN(nn.Module):
             for X_toks, Y_gold in tqdm(train_loader):
                 bs, seq = X_toks.shape
                 optimizer.zero_grad()
-                logits, masks = self.forward(X_toks.to(device))
+                masks  = (X_toks == self.toks_vocab["<pad>"]).to(device)
+                logits = self.forward(X_toks.to(device), (~masks))
                 #print(X_toks.shape)
-                loss =  self.crf.loss(logits, Y_gold.to(device), masks) #conditional random field
+                loss =  self.crf.loss(logits, Y_gold.to(device), (~masks)) #conditional random field
                 #loss_value = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
                 ep_loss.append(loss.mean().item())
                 loss.backward(loss)
@@ -105,9 +105,10 @@ class MweRNN(nn.Module):
         with torch.no_grad():
             for X_toks, Y_gold in tqdm(data_loader):
                 bs, seq = X_toks.shape
-                logits, masks = self.forward(X_toks.to(device))
+                masks = (X_toks == self.toks_vocab["<pad>"]).to(device)
+                logits = self.forward(X_toks.to(device), (~masks))
                 #loss = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
-                loss = self.crf.loss(logits , Y_gold.to(device), masks)
+                loss = self.crf.loss(logits , Y_gold.to(device), (~masks))
 
                 loss_lst.append(loss)
         return sum(loss_lst) / len(loss_lst)
@@ -120,8 +121,10 @@ class MweRNN(nn.Module):
         self.eval()
         self.to(device)
         with torch.no_grad():
-            logits, masks          = self.forward(batch_tensors)
-            best_score, best_paths = self.crf(logits, masks)
+
+            masks = (batch_tensors == self.toks_vocab["<pad>"]).to(device)
+            logits          = self.forward(batch_tensors, (~masks))
+            best_score, best_paths = self.crf(logits, (~masks))
 
         return best_score, best_paths
 
@@ -139,9 +142,11 @@ class MweRNN(nn.Module):
         class_counts = torch.zeros(num_tags)
         with torch.no_grad():
             for X_toks, Y_golds in tqdm(test_loader):
+
+                masks  = (X_toks == self.toks_vocab["<pad>"]).to(device)
                 # Forward pass
-                logits, masks = self.forward(X_toks.to(device))
-                best_score, best_paths = self.crf(logits, masks) #viterbi
+                logits = self.forward(X_toks.to(device), (~masks))
+                best_score, best_paths = self.crf(logits, (~masks)) #viterbi
                 best_paths = best_paths
                 #print(best_paths.shape)
                 for i in range(len(best_paths)):

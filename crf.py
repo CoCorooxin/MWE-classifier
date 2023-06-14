@@ -3,7 +3,7 @@ import torch.nn as nn
 
 """
 Adapted from :https://pytorch.org/tutorials/beginner/nlp/advanced_tutorial.html
-              https://github.com/jidasheng/bi-lstm-crf/tree/master
+replace iterations with matrix operations
 """
 def log_sum_exp(x):
     """
