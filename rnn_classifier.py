@@ -77,10 +77,10 @@ class MweRNN(nn.Module):
             for X_toks, Y_gold in tqdm(train_loader):
                 bs, seq = X_toks.shape
                 optimizer.zero_grad()
-                masks  = (X_toks == self.toks_vocab["<pad>"]).to(device)
-                logits = self.forward(X_toks.to(device), (~masks))
+                masks  = (X_toks != self.toks_vocab["<pad>"]).to(device)  #set padding idx to false
+                logits = self.forward(X_toks.to(device), masks)
                 #print(X_toks.shape)
-                loss =  self.crf.loss(logits, Y_gold.to(device), (~masks)) #conditional random field
+                loss =  self.crf.loss(logits, Y_gold.to(device), masks) #conditional random field
                 #loss_value = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
                 ep_loss.append(loss.mean().item())
                 loss.backward(loss)
@@ -105,10 +105,10 @@ class MweRNN(nn.Module):
         with torch.no_grad():
             for X_toks, Y_gold in tqdm(data_loader):
                 bs, seq = X_toks.shape
-                masks = (X_toks == self.toks_vocab["<pad>"]).to(device)
-                logits = self.forward(X_toks.to(device), (~masks))
+                masks = (X_toks != self.toks_vocab["<pad>"]).to(device) #create a mask where padidx is false
+                logits = self.forward(X_toks.to(device), masks)
                 #loss = loss_fnc(logprobs.view(bs*seq, -1), Y_gold.view(-1))
-                loss = self.crf.loss(logits , Y_gold.to(device), (~masks))
+                loss = self.crf.loss(logits , Y_gold.to(device), masks)
 
                 loss_lst.append(loss)
         return sum(loss_lst) / len(loss_lst)
@@ -122,9 +122,9 @@ class MweRNN(nn.Module):
         self.to(device)
         with torch.no_grad():
 
-            masks = (batch_tensors == self.toks_vocab["<pad>"]).to(device)
-            logits          = self.forward(batch_tensors, (~masks))
-            best_score, best_paths = self.crf(logits, (~masks))
+            masks = (batch_tensors != self.toks_vocab["<pad>"]).to(device)
+            logits          = self.forward(batch_tensors, masks)
+            best_score, best_paths = self.crf(logits, masks)
 
         return best_score, best_paths
 
@@ -143,16 +143,18 @@ class MweRNN(nn.Module):
         with torch.no_grad():
             for X_toks, Y_golds in tqdm(test_loader):
 
-                masks  = (X_toks == self.toks_vocab["<pad>"]).to(device)
+                masks  = (X_toks != self.toks_vocab["<pad>"]).to(device)
                 # Forward pass
-                logits = self.forward(X_toks.to(device), (~masks))
-                best_score, best_paths = self.crf(logits, (~masks)) #viterbi
+                logits = self.forward(X_toks.to(device), masks)
+                best_score, best_paths = self.crf(logits, masks) #viterbi
                 best_paths = best_paths
                 #print(best_paths.shape)
                 for i in range(len(best_paths)):
                     path = torch.tensor(best_paths[i])
+                    #print(Y_golds[i])
                     gold = torch.tensor([j for j in Y_golds[i] if j != self.padidx])
-
+                    #print(path)
+                    #print(gold)
                     for tag in range(num_tags):
                         TP[tag] += ((path == tag) & (gold == tag)).sum()
                         FP[tag] += ((path == tag) & (gold != tag)).sum()
