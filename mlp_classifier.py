@@ -22,7 +22,7 @@ class MLPClassifier(nn.Module):
 
         self.word_embedding = nn.Embedding(len(toks_vocab), emb_size).to(device)
         if pretrained:
-            self._load_pretrained()
+            self._load_pretrained(device)
         self.FFW          = nn.Linear(hidden_size , len(tags_vocab))  # output # of classes
         self.logsoftmax   = nn.LogSoftmax(dim=1)
 
@@ -46,7 +46,7 @@ class MLPClassifier(nn.Module):
                 pretrained_weights.append(torch.tensor(word_vectors[word]))
             else:
                 pretrained_weights.append(torch.FloatTensor(self.emb_size).uniform_(-0.25, 0.25))  # Randomly initialize for unknown words
-        pretrained_weights = torch.stack(pretrained_weights).to(device)
+        pretrained_weights = torch.stack(pretrained_weights)
         self.word_embedding.weight.data.copy_(pretrained_weights)
         self.word_embedding.weight.requires_grad = False
 
@@ -156,10 +156,10 @@ class MLPClassifier(nn.Module):
         return class_counts, TP, FP, FN, average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision
 
     @staticmethod
-    def load(modelfile, toks_vocab, tags_vocab, window_size, embsize, hidden_size, drop_out, device):
+    def load(modelfile, toks_vocab, tags_vocab, window_size, embsize, hidden_size, drop_out,  pretrained = False, device="cpu"):
         toks_vocab = Vocabulary.read(toks_vocab)
         tags_vocab = Vocabulary.read(tags_vocab)
-        model      = MLPClassifier(toks_vocab,tags_vocab, window_size, embsize, hidden_size, drop_out)
+        model      = MLPClassifier(toks_vocab,tags_vocab, window_size, embsize, hidden_size, drop_out,  pretrained, device)
         model.load_params(modelfile,device)
         return model,toks_vocab, tags_vocab
 

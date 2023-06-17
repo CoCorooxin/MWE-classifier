@@ -1,5 +1,5 @@
 from data_utils import Vocabulary
-from models import AttentionRNN, RNNmwe, LSTMmwe
+from models import AttentionLSTM, LSTMmwe
 from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 import torch.nn as nn
@@ -28,12 +28,10 @@ class MweRNN(nn.Module):
         self.relu         = nn.ReLU()
         self.dropout = nn.Dropout(drop_out)
 
-        if name == "RNN":
-            self.rnn = RNNmwe(emb_size, hidden_size, device = device)
         if name == "LSTM":
             self.rnn = LSTMmwe(emb_size, hidden_size, device = device)
-        if name == "ATRNN":
-            self.rnn = AttentionRNN(emb_size, hidden_size, drop_out = drop_out, device = device)
+        if name == "ATLSTM":
+            self.rnn = AttentionLSTM(emb_size, hidden_size, drop_out = drop_out, device = device)
         self.crf = CRF(hidden_size, self.tags_vocab)
 
     def forward(self, Xtoks_IDs, masks):
@@ -191,10 +189,10 @@ class MweRNN(nn.Module):
         return class_counts, TP, FP, FN, average_precision, average_recall, average_f1_score, weighted_f1_score, weighted_recall, weighted_precision
 
     @staticmethod
-    def load(modelfile,name, toks_vocab, tags_vocab, embsize, hidden_size, drop_out, device):
+    def load(modelfile,name, toks_vocab, tags_vocab, embsize, hidden_size, drop_out,  pretrained = False, device="cpu"):
         toks_vocab = Vocabulary.read(toks_vocab)
         tags_vocab = Vocabulary.read(tags_vocab)
-        model      = MweRNN(name, toks_vocab,tags_vocab, embsize, hidden_size, drop_out)
+        model      = MweRNN(name, toks_vocab,tags_vocab, embsize, hidden_size, drop_out, pretrained, device)
         model.load_params(modelfile,device)
         return model,toks_vocab, tags_vocab
 

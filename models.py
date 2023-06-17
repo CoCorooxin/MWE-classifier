@@ -32,12 +32,13 @@ The following models all have a CRF encode and decoder
 """
 
 """
-II a LSTM model is also implemented.this one is just to see if the RNN with Attention achieve better result than the classic LSTM implementation
+II a bi LSTM model is also implemented.this one is just to see if the classic LSTM implementation achieve the benchmark
 """
 class LSTMmwe(nn.Module):
     def __init__(self, embsize, hidden_size, device):
         super(LSTMmwe, self).__init__()
         self.lstm = nn.LSTM(embsize, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
+
 
     def forward(self, xembeddings, mask):
         # x: input sequences of shape (B, S, E)
@@ -55,28 +56,9 @@ class LSTMmwe(nn.Module):
 out of scope models
 -------------------------------
 """
-"""
-III this model implemented is a one layer bi-directional RNN sequential model
-"""
-class RNNmwe(nn.Module):
-    def __init__(self, embsize, hidden_size, device):
-        super(RNNmwe, self).__init__()
-        self.rnn = nn.RNN(embsize, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
-
-    def forward(self, xembeddings, mask):
-        # x: input sequences of shape (B, S, E)
-        # mask: mask tensor of shape (B, S)
-
-        # Apply mask to the embeds sequences
-        masked_x = xembeddings * (mask.unsqueeze(-1))
-
-        # Pass the masked input sequences to the RNN layer
-        output, _ = self.rnn(masked_x)
-
-        return output, _
 
 """
-IV. The third model implemented is a bi-directional RNN with an attention layer at the output, just a try
+IV. The Second model implemented is a bi-directional Lstm with an attention layer at the output, just a try
 """
 
 
@@ -115,16 +97,16 @@ class Attention(nn.Module):
         #V = V + attention_wights @ (self.ln1(V))
         #V = V + self.FFW(self.ln2(V)) #  bs, seq, seq @ bs, seq, embsize = bs, seq, embsize
         #print(out.shape)
-        return V + self.FFW(self.ln2(attention_wights @ (self.ln1(V))))
+        return V + self.FFW(self.ln2(attention_wights @ self.ln1(V)))
 
-class AttentionRNN(nn.Module):
+class AttentionLSTM(nn.Module):
     def __init__(self,emb_size, hidden_size, drop_out=0., device = "cpu"):
-        super(AttentionRNN, self).__init__()
-        self.rnn = nn.RNN(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
+        super(AttentionLSTM, self).__init__()
+        self.lstm = nn.LSTM(emb_size, hidden_size // 2, batch_first=True, num_layers=1, bidirectional=True, device = device)
         self.attention = Attention(hidden_size, drop_out= drop_out)  # Add attention layer
 
     def forward(self, xembeddings, mask):
-        logits, _ = self.rnn(xembeddings)
+        logits, _ = self.lstm(xembeddings)
         attn_output = self.attention(logits, mask)
         return attn_output, _
 

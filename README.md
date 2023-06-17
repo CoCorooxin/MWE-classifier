@@ -1,6 +1,6 @@
 # Multi Word Expression (MWE) classifier with enriched morpho syntactic features 
 
-The architectures variants implemented here are fixed length MLP and RNN with conditional random fields([CRF](https://arxiv.org/abs/1508.01991)). A mini pretrained w2v is included in the model.
+The architectures variants implemented here are fixed length MLP and RNN(and LSTM) with conditional random fields([CRF](https://arxiv.org/abs/1508.01991)). A mini pretrained w2v is included in the model.
 
  The hyperparameters are tuned using grid search. 
 
@@ -16,12 +16,12 @@ b. Or you can run the following commands from your terminal, supposed that we ar
 pip install -r requirements.txt
 ```
 
-​    You can download the pretrained w2v into the working directory from here: https://fauconnier.github.io/, or simply set pretrained to False, asking the model to train from scrach the word embedding.
+​    You can download the pretrained w2v into the working directory from here: https://fauconnier.github.io/, or simply set pretrained to False, asking the model to train the word embedding from scrach .
 
   To train a MLP model
 
 ```
-python ml[_classifier.py mlp.yaml
+python mlp_classifier.py mlp.yaml
 ```
 
 ​     To train a RNN model:
