@@ -1,6 +1,6 @@
 # Multi Word Expression (MWE) classifier with enriched morpho syntactic features 
 
-The architectures variants implemented here are fixed length MLP and RNN(and LSTM) with conditional random fields([CRF](https://arxiv.org/abs/1508.01991)). A mini pretrained w2v is included in the model.
+The architectures variants implemented here are fixed length MLP and  LSTM conditional random fields([CRF](https://arxiv.org/abs/1508.01991)). A mini pretrained w2v is included in the model.
 
  The hyperparameters are tuned using grid search. 
 
@@ -27,10 +27,16 @@ python mlp_classifier.py mlp.yaml
 ​     To train a RNN model:
 
 ```
-python rnn_classifier.py rnn.yaml
+python lstm_classifier.py lstm.yaml
 ```
 
-If you want to change other variants than vanilla RNN, you can change the "NAME" argument inside the yaml file to "LSTM" or "ATTRNN".
+If you want to change other variants than vanilla RNN, you can change the "NAME" argument inside the yaml file to "LSTM" or "ATLSTM"(stands for lstm with an attention layer).
+
+
+
+## 3. If you want to try the simple tagger see the demo in tagger_domo notebook.
+
+
 
 ### 2. The corpus used to train the classifier is the french tree bank, it can be found in the folder "corpus":
 
